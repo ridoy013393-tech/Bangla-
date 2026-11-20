@@ -64,6 +64,9 @@ import com.example.data.WebRtcCallManager
 import com.example.data.WebRtcConnectionState
 import com.example.model.CallSession
 import com.example.model.PublicProfile
+import com.example.service.ActiveAppTracker
+import com.example.service.CallRingtonePlayer
+import com.example.service.NotificationHelper
 import com.example.ui.components.UserAvatar
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.BrandBlue
@@ -89,6 +92,16 @@ fun IncomingCallBanner(
     onDecline: () -> Unit
 ) {
     val strings = LocalAppStrings.current
+    val context = LocalContext.current
+
+    // Play looping phone ringtone + vibration while the incoming banner is ringing
+    DisposableEffect(session.id) {
+        CallRingtonePlayer.startRinging(context, session.id)
+        onDispose {
+            CallRingtonePlayer.stopRinging(session.id)
+        }
+    }
+
     Surface(
         color = Color(0xFF0F172A),
         shape = RoundedCornerShape(22.dp),
@@ -279,8 +292,22 @@ fun LiveCallScreen(
 
     BackHandler { finishAndClose("ended") }
 
+    // Immediately silence incoming ringtone & clear incoming call notification once call screen opens
+    LaunchedEffect(activeSessionId) {
+        val sid = activeSessionId
+        ActiveAppTracker.activeCallId = sid
+        CallRingtonePlayer.stopRinging()
+        if (!sid.isNullOrBlank()) {
+            NotificationHelper.cancelIncomingCallNotification(context, sid)
+        }
+    }
+
     DisposableEffect(Unit) {
-        onDispose { rtcManager.release() }
+        onDispose {
+            ActiveAppTracker.activeCallId = null
+            CallRingtonePlayer.stopRinging()
+            rtcManager.release()
+        }
     }
 
     // Start WebRTC media & signaling once permissions are granted

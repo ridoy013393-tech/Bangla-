@@ -1,8 +1,20 @@
 <resources>
     <string name="app_name">Bangla Chat</string>
-    <string name="notification_channel_messages_id" translatable="false">bangla_chat_messages</string>
+    <string name="notification_channel_messages_id" translatable="false">bangla_chat_messages_v2</string>
     <string name="notification_channel_messages_name">মেসেজ নোটিফিকেশন</string>
-    <string name="notification_channel_messages_desc">নতুন চ্যাট মেসেজ এবং অ্যাক্টিভিটি অ্যালার্ট</string>
+    <string name="notification_channel_messages_desc">নতুন চ্যাট মেসেজ এবং সাউন্ড অ্যালার্ট</string>
+    <string name="notification_channel_calls_id" translatable="false">bangla_chat_incoming_calls_v2</string>
+    <string name="notification_channel_calls_name">ইনকামিং কল অ্যালার্ট</string>
+    <string name="notification_channel_calls_desc">ভয়েস এবং ভিডিও কলের রিংটোন ও নোটিফিকেশন</string>
+    <string name="notification_channel_sync_id" translatable="false">bangla_chat_realtime_sync</string>
+    <string name="notification_channel_sync_name">ব্যাকগ্রাউন্ড সংযোগ</string>
+    <string name="notification_channel_sync_desc">অ্যাপ বন্ধ থাকলেও মেসেজ ও কল রিসিভ করার জন্য চালু থাকে</string>
+    <string name="notification_sync_title">Bangla Chat সংযুক্ত আছে</string>
+    <string name="notification_sync_body">নতুন মেসেজ ও কলের জন্য প্রস্তুত</string>
+    <string name="notification_incoming_voice_call">ইনকামিং ভয়েস কল…</string>
+    <string name="notification_incoming_video_call">ইনকামিং ভিডিও কল…</string>
+    <string name="notification_action_accept_call">উত্তর দিন</string>
+    <string name="notification_action_decline_call">কাটুন</string>
     <string name="notification_new_message_hidden">নতুন মেসেজ এসেছে</string>
     <string name="notification_sender_default">Bangla Chat</string>
 </resources>

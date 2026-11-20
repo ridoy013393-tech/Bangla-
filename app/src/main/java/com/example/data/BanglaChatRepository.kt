@@ -1532,6 +1532,24 @@ class BanglaChatRepository(
             }
     }
 
+    suspend fun getCallSession(callId: String): Result<CallSession?> {
+        val path = "callSessions/$callId"
+        return try {
+            requireUserId()
+            val snap = db.collection("callSessions").document(callId).get().await()
+            val session = snap.toObject(
+                CallSession::class.java,
+                DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+            )
+            Result.success(session)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.GET, path)
+            Result.failure(e)
+        }
+    }
+
     fun observeIceCandidates(callId: String, currentUserId: String): Flow<List<IceCandidateRecord>> {
         val path = "callSessions/$callId/candidates"
         return db.collection("callSessions").document(callId)

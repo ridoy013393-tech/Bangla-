@@ -46,6 +46,13 @@ service cloud.firestore {
              isBlockedBetween(data.participants[0], data.participants[1]);
     }
 
+    function isDirectChatIdForUser(chatId, uid) {
+      return isValidId(uid) && (
+        chatId.matches('^' + uid + '_.+$') ||
+        chatId.matches('^.+_' + uid + '$')
+      );
+    }
+
     // --- ENTITY VALIDATION BLUEPRINTS ---
 
     function isValidPublicProfile(data) {
@@ -367,7 +374,12 @@ service cloud.firestore {
                          blockedUid != uid &&
                          incoming().blockedUid == blockedUid &&
                          isValidBlockedUser(incoming());
-        allow update: if false;
+        allow update: if isOwner(uid) &&
+                         isValidId(uid) &&
+                         isValidId(blockedUid) &&
+                         blockedUid != uid &&
+                         incoming().blockedUid == existing().blockedUid &&
+                         isValidBlockedUser(incoming());
         allow delete: if isOwner(uid) && isValidId(uid) && isValidId(blockedUid);
       }
 
@@ -380,7 +392,12 @@ service cloud.firestore {
                          favoriteUid != uid &&
                          incoming().favoriteUid == favoriteUid &&
                          isValidFavoriteContact(incoming());
-        allow update: if false;
+        allow update: if isOwner(uid) &&
+                         isValidId(uid) &&
+                         isValidId(favoriteUid) &&
+                         favoriteUid != uid &&
+                         incoming().favoriteUid == existing().favoriteUid &&
+                         isValidFavoriteContact(incoming());
         allow delete: if isOwner(uid) && isValidId(uid) && isValidId(favoriteUid);
       }
 
@@ -482,7 +499,10 @@ service cloud.firestore {
     // --- CHATS & REAL-TIME MESSAGES (1-on-1 & GROUPS) ---
 
     match /chats/{chatId} {
-      allow get: if isSignedIn() && isValidId(chatId) && request.auth.uid in existing().participants;
+      allow get: if isSignedIn() && isValidId(chatId) && (
+                   (resource == null && isDirectChatIdForUser(chatId, request.auth.uid)) ||
+                   (resource != null && request.auth.uid in existing().participants)
+                 );
       allow list: if isSignedIn() && request.auth.uid in resource.data.participants;
 
       allow create: if isSignedIn() &&

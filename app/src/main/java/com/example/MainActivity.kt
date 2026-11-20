@@ -1,11 +1,17 @@
 package com.example
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,7 +59,10 @@ import com.example.data.signOutUser
 import com.example.model.PublicProfile
 import com.example.model.UiState
 import com.example.model.UserPreferences
+import com.example.service.ActiveAppTracker
 import com.example.service.BanglaChatMessagingService
+import com.example.service.BanglaChatRealtimeService
+import com.example.service.NotificationHelper
 import com.example.ui.components.BanglaChatLogoMark
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.i18n.stringsForLanguage
@@ -80,12 +89,13 @@ import kotlinx.coroutines.withContext
 class MainActivity : ComponentActivity() {
 
     private val deepLinkChatId = MutableStateFlow<String?>(null)
+    private val deepLinkAcceptCallId = MutableStateFlow<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         configureAppCheck(this, intent)
         enableEdgeToEdge()
-        extractChatDeepLink(intent)
+        extractDeepLinks(intent)
 
         setContent {
             val context = LocalContext.current
@@ -94,6 +104,7 @@ class MainActivity : ComponentActivity() {
             val preferences by prefsRepository.preferencesFlow
                 .collectAsStateWithLifecycle(initialValue = UserPreferences())
             val pendingChatId by deepLinkChatId.collectAsStateWithLifecycle()
+            val pendingAcceptCallId by deepLinkAcceptCallId.collectAsStateWithLifecycle()
             val scope = rememberCoroutineScope()
 
             // Only update FLAG_SECURE when the actual window flag state differs to avoid redundant WMS surface syncs
@@ -112,12 +123,22 @@ class MainActivity : ComponentActivity() {
             val activityLifecycle = LocalLifecycleOwner.current
             DisposableEffect(activityLifecycle, preferences.appLockEnabled) {
                 val observer = LifecycleEventObserver { _, event ->
-                    if (event == Lifecycle.Event.ON_STOP && preferences.appLockEnabled) {
-                        isUnlocked = false
+                    when (event) {
+                        Lifecycle.Event.ON_START -> ActiveAppTracker.isAppInForeground = true
+                        Lifecycle.Event.ON_STOP -> {
+                            ActiveAppTracker.isAppInForeground = false
+                            if (preferences.appLockEnabled) {
+                                isUnlocked = false
+                            }
+                        }
+                        else -> Unit
                     }
                 }
                 activityLifecycle.lifecycle.addObserver(observer)
-                onDispose { activityLifecycle.lifecycle.removeObserver(observer) }
+                onDispose {
+                    ActiveAppTracker.isAppInForeground = false
+                    activityLifecycle.lifecycle.removeObserver(observer)
+                }
             }
 
             BanglaChatTheme(themePreference = preferences.theme) {
@@ -134,6 +155,8 @@ class MainActivity : ComponentActivity() {
                             preferences = preferences,
                             pendingDeepLinkChatId = pendingChatId,
                             onConsumeDeepLink = { deepLinkChatId.value = null },
+                            pendingAcceptCallId = pendingAcceptCallId,
+                            onConsumeAcceptCall = { deepLinkAcceptCallId.value = null },
                             onSetLanguage = { lang -> scope.launch { prefsRepository.setLanguage(lang) } }
                         )
                     }
@@ -145,13 +168,17 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        extractChatDeepLink(intent)
+        extractDeepLinks(intent)
     }
 
-    private fun extractChatDeepLink(intent: Intent?) {
+    private fun extractDeepLinks(intent: Intent?) {
         val chatId = intent?.getStringExtra(BanglaChatMessagingService.EXTRA_CHAT_ID)
         if (!chatId.isNullOrBlank()) {
             deepLinkChatId.value = chatId
+        }
+        val acceptCallId = intent?.getStringExtra(NotificationHelper.EXTRA_ACCEPT_CALL_ID)
+        if (!acceptCallId.isNullOrBlank()) {
+            deepLinkAcceptCallId.value = acceptCallId
         }
     }
 }
@@ -168,6 +195,8 @@ private fun BanglaChatAppRoot(
     preferences: UserPreferences,
     pendingDeepLinkChatId: String?,
     onConsumeDeepLink: () -> Unit,
+    pendingAcceptCallId: String?,
+    onConsumeAcceptCall: () -> Unit,
     onSetLanguage: (com.example.model.AppLanguage) -> Unit
 ) {
     val auth = remember { Firebase.auth }
@@ -298,7 +327,9 @@ private fun BanglaChatAppRoot(
                         currentUserId = user.uid,
                         preferences = preferences,
                         pendingDeepLinkChatId = pendingDeepLinkChatId,
-                        onConsumeDeepLink = onConsumeDeepLink
+                        onConsumeDeepLink = onConsumeDeepLink,
+                        pendingAcceptCallId = pendingAcceptCallId,
+                        onConsumeAcceptCall = onConsumeAcceptCall
                     )
                 }
             }
@@ -311,7 +342,9 @@ private fun AuthenticatedBanglaChatHost(
     currentUserId: String,
     preferences: UserPreferences,
     pendingDeepLinkChatId: String?,
-    onConsumeDeepLink: () -> Unit
+    onConsumeDeepLink: () -> Unit,
+    pendingAcceptCallId: String?,
+    onConsumeAcceptCall: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -338,11 +371,42 @@ private fun AuthenticatedBanglaChatHost(
         }
     )
 
-    // Lifecycle-driven online presence updates
+    // Request POST_NOTIFICATIONS runtime permission on Android 13+ once signed in
+    var notificationPermRequested by rememberSaveable(currentUserId) { mutableStateOf(false) }
+    val notificationPermLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            BanglaChatRealtimeService.start(context)
+        }
+    }
+
+    LaunchedEffect(currentUserId) {
+        NotificationHelper.createAllChannels(context)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val granted = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+            if (granted) {
+                BanglaChatRealtimeService.start(context)
+            } else if (!notificationPermRequested) {
+                notificationPermRequested = true
+                notificationPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        } else {
+            BanglaChatRealtimeService.start(context)
+        }
+    }
+
+    // Lifecycle-driven online presence updates & foreground sync service activation
     DisposableEffect(lifecycleOwner, currentUserId) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_START -> mainViewModel.setOnlinePresence(true)
+                Lifecycle.Event.ON_START -> {
+                    mainViewModel.setOnlinePresence(true)
+                    BanglaChatRealtimeService.start(context)
+                }
                 Lifecycle.Event.ON_STOP -> mainViewModel.setOnlinePresence(false)
                 else -> Unit
             }
@@ -352,6 +416,19 @@ private fun AuthenticatedBanglaChatHost(
     }
 
     var activeChatId by rememberSaveable(currentUserId) { mutableStateOf<String?>(null) }
+
+    // Keep ActiveAppTracker synced with whichever chat is currently open & clear its notification
+    DisposableEffect(activeChatId) {
+        ActiveAppTracker.activeChatId = activeChatId
+        if (!activeChatId.isNullOrBlank()) {
+            NotificationHelper.cancelChatNotification(context, activeChatId!!)
+        }
+        onDispose {
+            if (ActiveAppTracker.activeChatId == activeChatId) {
+                ActiveAppTracker.activeChatId = null
+            }
+        }
+    }
 
     LaunchedEffect(pendingDeepLinkChatId) {
         if (!pendingDeepLinkChatId.isNullOrBlank()) {
@@ -372,6 +449,20 @@ private fun AuthenticatedBanglaChatHost(
 
     val callRepository = remember(app) { app.chatRepository }
     var activeCallRequest by remember { mutableStateOf<ActiveCallRequest?>(null) }
+
+    // Handle "Accept" button tapped directly on an incoming call notification
+    LaunchedEffect(pendingAcceptCallId) {
+        val callId = pendingAcceptCallId
+        if (!callId.isNullOrBlank()) {
+            onConsumeAcceptCall()
+            NotificationHelper.cancelIncomingCallNotification(context, callId)
+            val liveSession = incomingCalls.firstOrNull { it.id == callId }
+                ?: callRepository.getCallSession(callId).getOrNull()
+            if (liveSession != null && liveSession.status == "ringing") {
+                activeCallRequest = ActiveCallRequest.Incoming(liveSession)
+            }
+        }
+    }
 
     val effectiveMyProfile = myProfile ?: PublicProfile(
         uid = currentUserId,
@@ -441,6 +532,7 @@ private fun AuthenticatedBanglaChatHost(
                     activeCallRequest = ActiveCallRequest.Outgoing(peer, callType)
                 },
                 onLogout = {
+                    BanglaChatRealtimeService.stop(context)
                     signOutUser(
                         credentialManager = credentialManager,
                         scope = scope,
@@ -448,6 +540,7 @@ private fun AuthenticatedBanglaChatHost(
                     )
                 },
                 onDeleteAccount = {
+                    BanglaChatRealtimeService.stop(context)
                     scope.launch {
                         deleteCurrentAccountWithReauth(
                             context = context,
@@ -464,9 +557,11 @@ private fun AuthenticatedBanglaChatHost(
                 IncomingCallBanner(
                     session = ringing,
                     onAccept = {
+                        NotificationHelper.cancelIncomingCallNotification(context, ringing.id)
                         activeCallRequest = ActiveCallRequest.Incoming(ringing)
                     },
                     onDecline = {
+                        NotificationHelper.cancelIncomingCallNotification(context, ringing.id)
                         mainViewModel.declineIncomingCall(ringing)
                     }
                 )

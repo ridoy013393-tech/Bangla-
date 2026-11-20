@@ -245,8 +245,19 @@ test("Chats & messages: participants can chat, react, mark read, soft-delete; ou
   const bobDb = testEnv.authenticatedContext(BOB_UID).firestore();
   const charlieDb = testEnv.authenticatedContext(CHARLIE_UID).firestore();
 
-  // Create chat
-  await assertSucceeds(aliceDb.collection("chats").doc(CHAT_AB).set(validChat()));
+  // First-time getOrCreateChat existence check before chat exists:
+  // participants in deterministic chatId succeed, outsiders and non-participant IDs fail
+  await assertSucceeds(aliceDb.collection("chats").doc(CHAT_AB).get());
+  await assertSucceeds(bobDb.collection("chats").doc(CHAT_AB).get());
+  await assertFails(charlieDb.collection("chats").doc(CHAT_AB).get());
+  await assertFails(aliceDb.collection("chats").doc("group_nonexistent").get());
+
+  // Create chat (matching Kotlin getOrCreateChat payload with empty initial message)
+  await assertSucceeds(
+    aliceDb.collection("chats").doc(CHAT_AB).set(
+      validChat({ lastMessage: "", lastSenderId: "", unreadCounts: { [ALICE_UID]: 0, [BOB_UID]: 0 } })
+    )
+  );
 
   // Filtered participant list query succeeds; unfiltered fails
   await assertSucceeds(

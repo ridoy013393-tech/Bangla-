@@ -10,8 +10,6 @@ const DATABASE_ID = "ai-studio-android-banglach-63aa7c60-ef42-45f3-b626-422fe5d4
 /**
  * Sends a real-time FCM push notification whenever a new message document
  * is created in /chats/{chatId}/messages/{messageId}.
- * Respects each recipient's private messagePreviewEnabled preference and
- * never exposes server credentials to the Android client.
  */
 exports.notifyOnNewMessage = onDocumentCreated(
   {
@@ -48,6 +46,8 @@ exports.notifyOnNewMessage = onDocumentCreated(
       if (showPreview) {
         if (message.type === "image") {
           bodyText = message.text ? `📷 ${message.text}` : "📷 ছবি পাঠানো হয়েছে";
+        } else if (message.type === "audio") {
+          bodyText = "🎤 ভয়েস মেসেজ";
         } else if (message.type === "document") {
           bodyText = `📎 ${message.mediaName || "ডকুমেন্ট পাঠানো হয়েছে"}`;
         } else {
@@ -58,6 +58,7 @@ exports.notifyOnNewMessage = onDocumentCreated(
       await getMessaging().send({
         token,
         data: {
+          type: "message",
           chatId,
           senderId,
           senderName,
@@ -67,7 +68,7 @@ exports.notifyOnNewMessage = onDocumentCreated(
         android: {
           priority: "high",
           notification: {
-            channelId: "bangla_chat_messages",
+            channelId: "bangla_chat_messages_v2",
             title: senderName,
             body: bodyText,
             clickAction: "OPEN_CHAT",
@@ -75,5 +76,46 @@ exports.notifyOnNewMessage = onDocumentCreated(
         },
       });
     }
+  }
+);
+
+/**
+ * Sends a high-priority data push whenever a new incoming call session is created
+ * in /callSessions/{callId}.
+ */
+exports.notifyOnIncomingCall = onDocumentCreated(
+  {
+    document: "callSessions/{callId}",
+    database: DATABASE_ID,
+  },
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+
+    const session = snap.data();
+    const callId = event.params.callId;
+    if (session.status !== "ringing" || !session.calleeUid) return;
+
+    const db = getFirestore(DATABASE_ID);
+    const calleePrivate = await db.collection("users").doc(session.calleeUid).get();
+    if (!calleePrivate.exists) return;
+
+    const token = calleePrivate.data().fcmToken;
+    if (!token || typeof token !== "string") return;
+
+    await getMessaging().send({
+      token,
+      data: {
+        type: "call",
+        callId,
+        callerUid: String(session.callerUid || ""),
+        callerName: String(session.callerName || "Bangla Chat"),
+        callType: session.callType === "video" ? "video" : "audio",
+      },
+      android: {
+        priority: "high",
+        ttl: 45 * 1000,
+      },
+    });
   }
 );
