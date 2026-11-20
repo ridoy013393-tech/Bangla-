@@ -1,0 +1,6 @@
+{
+  "name": "Bangla Chat",
+  "description": "Native Android real-time messaging application in Bangla and English with Firebase Authentication and Cloud Firestore.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

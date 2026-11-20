@@ -1,0 +1,247 @@
+{
+  "entities": {
+    "PublicProfile": {
+      "title": "PublicProfile",
+      "description": "Publicly discoverable profile metadata for Bangla Chat users (excludes PII such as private email and FCM tokens).",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID of the user." },
+        "name": { "type": "string", "description": "Display name shown in chats and contacts." },
+        "username": { "type": "string", "description": "Lowercase unique handle used for searching users." },
+        "phoneLookup": { "type": "string", "description": "Optional opted-in phone number string for contact discovery." },
+        "photoUrl": { "type": "string", "description": "Profile avatar URL." },
+        "about": { "type": "string", "description": "Short bio or status text." },
+        "online": { "type": "boolean", "description": "Whether the user is currently active in the app." },
+        "discoverable": { "type": "boolean", "description": "Privacy setting controlling whether other users can find this profile in search." },
+        "showOnlineStatus": { "type": "boolean", "description": "Privacy setting controlling online indicator visibility." },
+        "showLastSeen": { "type": "boolean", "description": "Privacy setting controlling last seen timestamp visibility." },
+        "showReadReceipts": { "type": "boolean", "description": "Privacy setting controlling read receipt updates." },
+        "showProfilePhoto": { "type": "boolean", "description": "Optional privacy setting controlling whether others can see profile photo." },
+        "showAbout": { "type": "boolean", "description": "Optional privacy setting controlling whether others can see about/bio text." },
+        "lastSeen": { "type": "string", "format": "date-time", "description": "Last active server timestamp (FieldValue.serverTimestamp())." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Account creation server timestamp (FieldValue.serverTimestamp())." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last profile update server timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": [
+        "uid", "name", "username", "online", "discoverable",
+        "showOnlineStatus", "showLastSeen", "showReadReceipts",
+        "lastSeen", "createdAt", "updatedAt"
+      ]
+    },
+    "PrivateUser": {
+      "title": "PrivateUser",
+      "description": "Strictly owner-only user PII and device notification settings.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID of the account owner." },
+        "email": { "type": "string", "description": "Private email address." },
+        "phone": { "type": "string", "description": "Private phone number." },
+        "fcmToken": { "type": "string", "description": "Latest Firebase Cloud Messaging registration token." },
+        "messagePreviewEnabled": { "type": "boolean", "description": "Whether push notifications include message body previews." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation server timestamp." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Update server timestamp." }
+      },
+      "required": ["uid", "email", "phone", "messagePreviewEnabled", "createdAt", "updatedAt"]
+    },
+    "BlockedUser": {
+      "title": "BlockedUser",
+      "description": "Record of a user blocked by the account owner.",
+      "type": "object",
+      "properties": {
+        "blockedUid": { "type": "string" },
+        "blockedName": { "type": "string" },
+        "blockedUsername": { "type": "string" },
+        "blockedPhotoUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["blockedUid", "blockedName", "createdAt"]
+    },
+    "FavoriteContact": {
+      "title": "FavoriteContact",
+      "description": "User-pinned favorite contact record.",
+      "type": "object",
+      "properties": {
+        "favoriteUid": { "type": "string" },
+        "name": { "type": "string" },
+        "username": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["favoriteUid", "name", "createdAt"]
+    },
+    "CallLog": {
+      "title": "CallLog",
+      "description": "Historical call record scoped to a single user.",
+      "type": "object",
+      "properties": {
+        "peerUid": { "type": "string" },
+        "peerName": { "type": "string" },
+        "peerPhotoUrl": { "type": "string" },
+        "direction": { "type": "string", "enum": ["incoming", "outgoing", "missed"] },
+        "callType": { "type": "string", "enum": ["audio", "video"] },
+        "durationSeconds": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["peerUid", "peerName", "direction", "callType", "durationSeconds", "createdAt"]
+    },
+    "UserReport": {
+      "title": "UserReport",
+      "description": "Abuse or spam report submitted against another user account.",
+      "type": "object",
+      "properties": {
+        "reporterUid": { "type": "string" },
+        "reportedUid": { "type": "string" },
+        "reason": { "type": "string" },
+        "details": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["reporterUid", "reportedUid", "reason", "createdAt"]
+    },
+    "Chat": {
+      "title": "Chat",
+      "description": "Direct two-participant or multi-member group conversation thread metadata.",
+      "type": "object",
+      "properties": {
+        "participants": { "type": "array", "description": "Bounded array (2..50) of participant Firebase UIDs." },
+        "participantNames": { "type": "object", "description": "Map of participant UID to display name." },
+        "participantPhotos": { "type": "object", "description": "Map of participant UID to avatar URL." },
+        "isGroup": { "type": "boolean", "description": "Optional flag distinguishing group chats from 1-on-1 DMs." },
+        "groupName": { "type": "string", "description": "Optional display name for group chats." },
+        "groupPhotoUrl": { "type": "string", "description": "Optional avatar URL for group chats." },
+        "adminUids": { "type": "array", "description": "Optional list of group admin UIDs." },
+        "lastMessage": { "type": "string" },
+        "lastMessageType": { "type": "string", "enum": ["text", "image", "document", "audio"] },
+        "lastSenderId": { "type": "string" },
+        "lastMessageTime": { "type": "string", "format": "date-time" },
+        "unreadCounts": { "type": "object" },
+        "typingUids": { "type": "array" },
+        "pinnedMessageId": { "type": "string" },
+        "pinnedMessageText": { "type": "string" },
+        "pinnedMessageSender": { "type": "string" },
+        "disappearingHours": { "type": "integer" },
+        "mutedBy": { "type": "array" },
+        "pinnedBy": { "type": "array" },
+        "archivedBy": { "type": "array" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "participants", "participantNames", "participantPhotos",
+        "lastMessage", "lastMessageType", "lastSenderId", "lastMessageTime",
+        "unreadCounts", "typingUids", "createdBy", "createdAt", "updatedAt"
+      ]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Individual message (text, image, document, or voice note) inside a conversation thread.",
+      "type": "object",
+      "properties": {
+        "chatId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "participants": { "type": "array" },
+        "text": { "type": "string" },
+        "type": { "type": "string", "enum": ["text", "image", "document", "audio"] },
+        "mediaUrl": { "type": "string" },
+        "mediaName": { "type": "string" },
+        "mediaSizeBytes": { "type": "integer" },
+        "audioDurationSec": { "type": "integer" },
+        "delivered": { "type": "boolean" },
+        "read": { "type": "boolean" },
+        "deleted": { "type": "boolean" },
+        "edited": { "type": "boolean" },
+        "forwarded": { "type": "boolean" },
+        "replyToId": { "type": "string" },
+        "replyToText": { "type": "string" },
+        "replyToSenderName": { "type": "string" },
+        "reactions": { "type": "object" },
+        "starredBy": { "type": "array" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "chatId", "senderId", "participants", "text", "type",
+        "delivered", "read", "deleted", "timestamp", "updatedAt"
+      ]
+    },
+    "StatusStory": {
+      "title": "StatusStory",
+      "description": "24-hour expiring text or photo status story.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorPhotoUrl": { "type": "string" },
+        "type": { "type": "string", "enum": ["text", "image"] },
+        "text": { "type": "string" },
+        "mediaUrl": { "type": "string" },
+        "backgroundColorHex": { "type": "integer" },
+        "viewerUids": { "type": "array" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "authorName", "type", "text", "viewerUids", "expiresAt", "createdAt"]
+    },
+    "CallSession": {
+      "title": "CallSession",
+      "description": "Real-time WebRTC audio/video signaling session between two participants.",
+      "type": "object",
+      "properties": {
+        "callerUid": { "type": "string" },
+        "callerName": { "type": "string" },
+        "callerPhotoUrl": { "type": "string" },
+        "calleeUid": { "type": "string" },
+        "calleeName": { "type": "string" },
+        "calleePhotoUrl": { "type": "string" },
+        "participants": { "type": "array" },
+        "callType": { "type": "string", "enum": ["audio", "video"] },
+        "status": { "type": "string", "enum": ["ringing", "accepted", "declined", "ended", "missed"] },
+        "offerSdp": { "type": "string" },
+        "answerSdp": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["callerUid", "callerName", "calleeUid", "calleeName", "participants", "callType", "status", "createdAt", "updatedAt"]
+    },
+    "UsernameClaim": {
+      "title": "UsernameClaim",
+      "description": "Globally unique lowercase @username reservation mapping each handle to a single user UID.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID owning this username." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Claim creation server timestamp." }
+      },
+      "required": ["uid", "createdAt"]
+    },
+    "IceCandidateRecord": {
+      "title": "IceCandidateRecord",
+      "description": "WebRTC ICE candidate exchanged inside a call session.",
+      "type": "object",
+      "properties": {
+        "senderUid": { "type": "string" },
+        "participants": { "type": "array" },
+        "sdpMid": { "type": "string" },
+        "sdpMLineIndex": { "type": "integer" },
+        "sdp": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["senderUid", "participants", "sdpMid", "sdpMLineIndex", "sdp", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/profiles/{uid}": { "schema": { "$ref": "#/entities/PublicProfile" } },
+    "/usernames/{username}": { "schema": { "$ref": "#/entities/UsernameClaim" } },
+    "/users/{uid}": { "schema": { "$ref": "#/entities/PrivateUser" } },
+    "/users/{uid}/blockedUsers/{blockedUid}": { "schema": { "$ref": "#/entities/BlockedUser" } },
+    "/users/{uid}/favorites/{favoriteUid}": { "schema": { "$ref": "#/entities/FavoriteContact" } },
+    "/users/{uid}/callLogs/{callId}": { "schema": { "$ref": "#/entities/CallLog" } },
+    "/reports/{reportId}": { "schema": { "$ref": "#/entities/UserReport" } },
+    "/chats/{chatId}": { "schema": { "$ref": "#/entities/Chat" } },
+    "/chats/{chatId}/messages/{messageId}": { "schema": { "$ref": "#/entities/ChatMessage" } },
+    "/statuses/{statusId}": { "schema": { "$ref": "#/entities/StatusStory" } },
+    "/callSessions/{callId}": { "schema": { "$ref": "#/entities/CallSession" } },
+    "/callSessions/{callId}/candidates/{candidateId}": { "schema": { "$ref": "#/entities/IceCandidateRecord" } }
+  }
+}

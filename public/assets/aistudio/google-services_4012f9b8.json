@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "506748898824",
+    "firebase_url": "https://my-gem-d86d3-default-rtdb.firebaseio.com",
+    "project_id": "my-gem-d86d3",
+    "storage_bucket": "my-gem-d86d3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:506748898824:android:494dac93bd2d82e78b8bbd",
+        "android_client_info": {
+          "package_name": "com.mhridoy.banglacha"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "506748898824-rg7o60c5ed5pke2ii66ol1918aughqse.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBzCNim9xxrW16Njx7bIbw9lQckyqqTHWI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "506748898824-rg7o60c5ed5pke2ii66ol1918aughqse.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

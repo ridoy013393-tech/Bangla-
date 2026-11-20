@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">Bangla Chat</string>
+    <string name="notification_channel_messages_id" translatable="false">bangla_chat_messages</string>
+    <string name="notification_channel_messages_name">মেসেজ নোটিফিকেশন</string>
+    <string name="notification_channel_messages_desc">নতুন চ্যাট মেসেজ এবং অ্যাক্টিভিটি অ্যালার্ট</string>
+    <string name="notification_new_message_hidden">নতুন মেসেজ এসেছে</string>
+    <string name="notification_sender_default">Bangla Chat</string>
+</resources>
