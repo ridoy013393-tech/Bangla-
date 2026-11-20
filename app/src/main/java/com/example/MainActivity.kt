@@ -67,6 +67,7 @@ import com.example.ui.components.BanglaChatLogoMark
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.i18n.stringsForLanguage
 import com.example.ui.screens.ActiveCallRequest
+import com.example.ui.screens.AiAssistantScreen
 import com.example.ui.screens.AppLockScreen
 import com.example.ui.screens.AuthEntryMode
 import com.example.ui.screens.AuthScreen
@@ -77,6 +78,7 @@ import com.example.ui.screens.LiveCallScreen
 import com.example.ui.screens.RegistrationCompletionScreen
 import com.example.ui.theme.BanglaChatTheme
 import com.example.ui.theme.BrandBlue
+import com.example.viewmodel.AiAssistantViewModel
 import com.example.viewmodel.ChatViewModel
 import com.example.viewmodel.MainViewModel
 import com.google.firebase.Firebase
@@ -416,6 +418,16 @@ private fun AuthenticatedBanglaChatHost(
     }
 
     var activeChatId by rememberSaveable(currentUserId) { mutableStateOf<String?>(null) }
+    var isAiAssistantOpen by rememberSaveable(currentUserId) { mutableStateOf(false) }
+
+    val aiAssistantViewModel: AiAssistantViewModel = viewModel(
+        key = "ai_assistant_$currentUserId",
+        factory = viewModelFactory {
+            initializer {
+                AiAssistantViewModel(currentUserId = currentUserId)
+            }
+        }
+    )
 
     // Keep ActiveAppTracker synced with whichever chat is currently open & clear its notification
     DisposableEffect(activeChatId) {
@@ -432,6 +444,7 @@ private fun AuthenticatedBanglaChatHost(
 
     LaunchedEffect(pendingDeepLinkChatId) {
         if (!pendingDeepLinkChatId.isNullOrBlank()) {
+            isAiAssistantOpen = false
             activeChatId = pendingDeepLinkChatId
             onConsumeDeepLink()
         }
@@ -523,11 +536,21 @@ private fun AuthenticatedBanglaChatHost(
                     }
                 )
             }
+        } else if (isAiAssistantOpen) {
+            AiAssistantScreen(
+                viewModel = aiAssistantViewModel,
+                language = preferences.language,
+                onBack = { isAiAssistantOpen = false }
+            )
         } else {
             HomeScreen(
                 viewModel = mainViewModel,
                 preferences = preferences,
-                onOpenChat = { chatId -> activeChatId = chatId },
+                onOpenChat = { chatId ->
+                    isAiAssistantOpen = false
+                    activeChatId = chatId
+                },
+                onOpenAiAssistant = { isAiAssistantOpen = true },
                 onStartCall = { peer, callType ->
                     activeCallRequest = ActiveCallRequest.Outgoing(peer, callType)
                 },

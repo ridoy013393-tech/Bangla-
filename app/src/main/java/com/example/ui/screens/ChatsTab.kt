@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.Archive
 import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DoneAll
 import androidx.compose.material.icons.rounded.ExpandLess
@@ -108,7 +109,8 @@ fun ChatsTab(
     onExploreContacts: () -> Unit,
     onCreateGroupClick: () -> Unit,
     onAddStatusClick: () -> Unit,
-    onOpenAuthorStatuses: (List<StatusStory>) -> Unit
+    onOpenAuthorStatuses: (List<StatusStory>) -> Unit,
+    onOpenAiAssistant: () -> Unit
 ) {
     val strings = LocalAppStrings.current
     val profileByUid = remember(discoverableProfiles) {
@@ -209,6 +211,16 @@ fun ChatsTab(
                         )
                         HorizontalDivider(
                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+                        )
+                    }
+
+                    item(key = "deepseek_ai_assistant_card") {
+                        DeepSeekAiAssistantCard(
+                            title = strings.aiAssistantTitle,
+                            subtitle = strings.aiAssistantSubtitle,
+                            badge = strings.aiAssistantBannerBadge,
+                            onClick = onOpenAiAssistant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
                         )
                     }
 
@@ -562,6 +574,86 @@ private fun OnlineStatusGradientBanner(
                 tint = Color.White.copy(alpha = 0.85f)
             )
         }
+    }
+}
+
+@Composable
+private fun DeepSeekAiAssistantCard(
+    title: String,
+    subtitle: String,
+    badge: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val cardGradient = Brush.horizontalGradient(
+        colors = listOf(Color(0xFF0F172A), Color(0xFF1E3A8A), Color(0xFF581C87))
+    )
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(cardGradient)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 13.dp)
+            .testTag("open_deepseek_ai_card"),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(46.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(Color(0xFF38BDF8), BrandBlue, BrandPurple)
+                    )
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.AutoAwesome,
+                contentDescription = title,
+                tint = Color.White,
+                modifier = Modifier.size(24.dp)
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Surface(
+                    color = Color(0xFF38BDF8).copy(alpha = 0.24f),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(
+                        text = badge,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = Color(0xFFBAE6FD),
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.85f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Spacer(modifier = Modifier.width(6.dp))
+        Icon(
+            imageVector = Icons.Rounded.ChevronRight,
+            contentDescription = null,
+            tint = Color.White.copy(alpha = 0.85f)
+        )
     }
 }
 

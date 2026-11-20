@@ -1,5 +1,6 @@
 package com.example
 
+import com.example.data.AiAssistantRepository
 import com.example.data.BanglaChatRepository
 import com.example.data.normalizePhoneNumber
 import com.example.model.AppLanguage
@@ -41,5 +42,30 @@ class ExampleUnitTest {
         assertEquals("নতুন অ্যাকাউন্ট তৈরি করুন", BanglaStrings.createNewAccount)
         assertEquals("Login with Phone", EnglishStrings.loginWithPhone)
         assertEquals("Create New Account", EnglishStrings.createNewAccount)
+        assertEquals("Bangla AI • DeepSeek", BanglaStrings.aiAssistantTitle)
+    }
+
+    @Test
+    fun deepSeekTextHelpersWorkInPureJvm() {
+        assertEquals(
+            "ভালো আছি, আপনি কেমন আছেন?",
+            AiAssistantRepository.stripThinkBlocks("<think>internal reasoning</think>ভালো আছি, আপনি কেমন আছেন?")
+        )
+        assertEquals(
+            "হ্যালো বন্ধু",
+            AiAssistantRepository.cleanQuotedOutput("\"হ্যালো বন্ধু\"")
+        )
+        val numberedReply = """
+            1. Sure, sounds good!
+            2. I'll be there soon
+            3. Thanks a lot!
+        """.trimIndent()
+        assertEquals(
+            listOf("Sure, sounds good!", "I'll be there soon", "Thanks a lot!"),
+            AiAssistantRepository.parseQuickReplies(numberedReply)
+        )
+
+        val longPrompt = "a".repeat(2500)
+        assertEquals(1800, AiAssistantRepository.truncateForGetUrl(longPrompt).length)
     }
 }

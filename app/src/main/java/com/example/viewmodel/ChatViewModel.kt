@@ -8,6 +8,7 @@ import com.example.data.AiAssistantRepository
 import com.example.data.BanglaChatRepository
 import com.example.data.StorageRepository
 import com.example.data.extractFirestoreRootError
+import com.example.model.AiRewriteTone
 import com.example.model.AiTaskState
 import com.example.model.AppLanguage
 import com.example.model.Chat
@@ -72,6 +73,15 @@ class ChatViewModel(
 
     private val _summaryState = MutableStateFlow<AiTaskState>(AiTaskState.Idle)
     val summaryState: StateFlow<AiTaskState> = _summaryState.asStateFlow()
+
+    private val _writerState = MutableStateFlow<AiTaskState>(AiTaskState.Idle)
+    val writerState: StateFlow<AiTaskState> = _writerState.asStateFlow()
+
+    private val _explainState = MutableStateFlow<AiTaskState>(AiTaskState.Idle)
+    val explainState: StateFlow<AiTaskState> = _explainState.asStateFlow()
+
+    private val _explainSourceText = MutableStateFlow("")
+    val explainSourceText: StateFlow<String> = _explainSourceText.asStateFlow()
 
     private var typingStopJob: Job? = null
     private var pendingRetryUri: Pair<Uri, Boolean>? = null
@@ -463,6 +473,53 @@ class ChatViewModel(
 
     fun resetSummaryState() {
         _summaryState.value = AiTaskState.Idle
+    }
+
+    fun rewriteDraft(draftText: String, tone: AiRewriteTone, language: AppLanguage) {
+        if (draftText.isBlank()) return
+        viewModelScope.launch {
+            _writerState.value = AiTaskState.Loading
+            aiRepository.rewriteMessage(draftText, tone, language)
+                .onSuccess { result -> _writerState.value = AiTaskState.Success(result) }
+                .onFailure { err ->
+                    _writerState.value = AiTaskState.Error(err.localizedMessage ?: "AI rewrite failed")
+                }
+        }
+    }
+
+    fun draftMessageFromIdea(idea: String, language: AppLanguage) {
+        if (idea.isBlank()) return
+        viewModelScope.launch {
+            _writerState.value = AiTaskState.Loading
+            aiRepository.draftMessageFromIdea(idea, language)
+                .onSuccess { result -> _writerState.value = AiTaskState.Success(result) }
+                .onFailure { err ->
+                    _writerState.value = AiTaskState.Error(err.localizedMessage ?: "AI draft failed")
+                }
+        }
+    }
+
+    fun resetWriterState() {
+        _writerState.value = AiTaskState.Idle
+    }
+
+    fun explainMessage(messageText: String, language: AppLanguage) {
+        val clean = messageText.trim()
+        if (clean.isEmpty()) return
+        _explainSourceText.value = clean
+        viewModelScope.launch {
+            _explainState.value = AiTaskState.Loading
+            aiRepository.explainMessage(clean, language)
+                .onSuccess { explanation -> _explainState.value = AiTaskState.Success(explanation) }
+                .onFailure { err ->
+                    _explainState.value = AiTaskState.Error(err.localizedMessage ?: "AI explanation failed")
+                }
+        }
+    }
+
+    fun resetExplainState() {
+        _explainState.value = AiTaskState.Idle
+        _explainSourceText.value = ""
     }
 
     override fun onCleared() {

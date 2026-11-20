@@ -31,6 +31,7 @@ import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.ChatBubble
 import androidx.compose.material.icons.rounded.Close
@@ -85,6 +86,7 @@ import com.example.ui.components.OfflineConnectivityBanner
 import com.example.ui.components.UserAvatar
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.BrandBlue
+import com.example.ui.theme.BrandPurple
 import com.example.viewmodel.MainViewModel
 
 @Composable
@@ -92,6 +94,7 @@ fun HomeScreen(
     viewModel: MainViewModel,
     preferences: UserPreferences,
     onOpenChat: (String) -> Unit,
+    onOpenAiAssistant: () -> Unit,
     onStartCall: (PublicProfile, String) -> Unit,
     onLogout: () -> Unit,
     onDeleteAccount: () -> Unit
@@ -213,6 +216,16 @@ fun HomeScreen(
                                     fontSize = 24.sp,
                                     modifier = Modifier.weight(1f)
                                 )
+                                IconButton(
+                                    onClick = onOpenAiAssistant,
+                                    modifier = Modifier.testTag("home_ai_assistant_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.AutoAwesome,
+                                        contentDescription = strings.aiAssistantTitle,
+                                        tint = BrandPurple
+                                    )
+                                }
                                 if (selectedTab == HomeTab.CHATS) {
                                     IconButton(
                                         onClick = { showCreateGroupDialog = true },
@@ -421,7 +434,8 @@ fun HomeScreen(
                             onExploreContacts = { selectedTab = HomeTab.CONTACTS },
                             onCreateGroupClick = { showCreateGroupDialog = true },
                             onAddStatusClick = { showCreateStatusDialog = true },
-                            onOpenAuthorStatuses = { stories -> viewingStories = stories }
+                            onOpenAuthorStatuses = { stories -> viewingStories = stories },
+                            onOpenAiAssistant = onOpenAiAssistant
                         )
 
                         HomeTab.CONTACTS -> ContactsTab(

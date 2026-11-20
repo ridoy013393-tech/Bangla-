@@ -53,6 +53,22 @@ sealed interface AiTaskState {
     data class Error(val message: String) : AiTaskState
 }
 
+enum class AiRewriteTone {
+    POLITE,
+    CASUAL,
+    PROFESSIONAL,
+    BANGLA_POLISH,
+    ENGLISH
+}
+
+data class AiAssistantMessage(
+    val id: String,
+    val text: String,
+    val isUser: Boolean,
+    val timestampMillis: Long = System.currentTimeMillis(),
+    val isError: Boolean = false
+)
+
 @Keep
 @IgnoreExtraProperties
 data class PublicProfile(

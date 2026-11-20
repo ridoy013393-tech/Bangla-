@@ -16,8 +16,8 @@ android {
     applicationId = "com.mhridoy.banglacha"
     minSdk = 24
     targetSdk = 36
-    versionCode = 2
-    versionName = "1.1"
+    versionCode = 3
+    versionName = "1.2"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -111,7 +111,7 @@ dependencies {
   // implementation(libs.androidx.room.runtime)
   implementation(libs.coil.compose)
   // implementation(libs.converter.moshi)
-  implementation(libs.firebase.ai)
+  // implementation(libs.firebase.ai)
   implementation(libs.firebase.firestore)
   // implementation(libs.firebase.storage)
   implementation(libs.firebase.messaging)

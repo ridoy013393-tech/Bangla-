@@ -212,14 +212,48 @@ interface AppStrings {
     val statusPostedToast: String
     val statusViewersLabel: String
     val deleteStatus: String
-    // Smart Bangla AI
+    // Smart Bangla AI (DeepSeek)
     val aiAssistantTitle: String
+    val aiAssistantSubtitle: String
+    val aiAssistantBannerBadge: String
+    val aiAssistantMemoryBadge: String
+    val aiAssistantNewChat: String
+    val aiAssistantNewChatToast: String
+    val aiAssistantInputHint: String
+    val aiAssistantWelcomeTitle: String
+    val aiAssistantWelcomeSubtitle: String
+    val aiQuickPrompt1: String
+    val aiQuickPrompt2: String
+    val aiQuickPrompt3: String
+    val aiQuickPrompt4: String
     val aiTranslateAction: String
     val aiTranslatedLabel: String
+    val aiExplainAction: String
+    val aiExplainTitle: String
+    val aiExplainOriginalLabel: String
     val aiQuickRepliesAction: String
+    val aiWriterAction: String
+    val aiWriterTitle: String
+    val aiWriterTabRewrite: String
+    val aiWriterTabCompose: String
+    val aiWriterRewriteHint: String
+    val aiWriterIdeaHint: String
+    val aiWriterGenerateAction: String
+    val aiWriterInsertAction: String
+    val aiWriterSendAction: String
+    val aiTonePolite: String
+    val aiToneCasual: String
+    val aiToneProfessional: String
+    val aiToneBanglaPolish: String
+    val aiToneEnglish: String
+    val aiIdeaPreset1: String
+    val aiIdeaPreset2: String
+    val aiIdeaPreset3: String
+    val aiIdeaPreset4: String
     val aiSummarizeChatAction: String
     val aiSummaryTitle: String
     val aiGenerating: String
+    val aiPoweredByDeepSeek: String
     // Live Audio/Video Calls
     val voiceCallAction: String
     val videoCallAction: String
@@ -511,13 +545,47 @@ object BanglaStrings : AppStrings {
     override val statusPostedToast = "স্ট্যাটাস পোস্ট করা হয়েছে"
     override val statusViewersLabel = "জন দেখেছে"
     override val deleteStatus = "স্ট্যাটাস মুছুন"
-    override val aiAssistantTitle = "স্মার্ট বাংলা AI"
+    override val aiAssistantTitle = "Bangla AI • DeepSeek"
+    override val aiAssistantSubtitle = "যেকোনো প্রশ্ন, কোডিং, লেখা বা অনুবাদ — স্মৃতিসহ উত্তর"
+    override val aiAssistantBannerBadge = "ফ্রি AI"
+    override val aiAssistantMemoryBadge = "স্মৃতি চালু • DeepSeek"
+    override val aiAssistantNewChat = "নতুন চ্যাট"
+    override val aiAssistantNewChatToast = "নতুন AI কথোপকথন শুরু হয়েছে"
+    override val aiAssistantInputHint = "DeepSeek AI-কে যেকোনো কিছু জিজ্ঞেস করুন..."
+    override val aiAssistantWelcomeTitle = "আসসালামু আলাইকুম! আমি আপনার DeepSeek AI"
+    override val aiAssistantWelcomeSubtitle = "বাংলা বা ইংরেজিতে যেকোনো প্রশ্ন করুন — আমি আগের কথোপকথন মনে রেখে উত্তর দিতে পারি।"
+    override val aiQuickPrompt1 = "বাংলায় একটি সুন্দর স্ট্যাটাস লিখে দাও"
+    override val aiQuickPrompt2 = "সহজ ভাষায় ইংরেজি শেখার ৫টি টিপস দাও"
+    override val aiQuickPrompt3 = "একটি Python কোড লিখে দাও"
+    override val aiQuickPrompt4 = "অফিসের জন্য ছুটির আবেদন লিখে দাও"
     override val aiTranslateAction = "AI অনুবাদ (বাংলা ↔ English)"
     override val aiTranslatedLabel = "AI অনুবাদ"
+    override val aiExplainAction = "AI দিয়ে ব্যাখ্যা করুন"
+    override val aiExplainTitle = "AI মেসেজ ব্যাখ্যা"
+    override val aiExplainOriginalLabel = "মূল মেসেজ"
     override val aiQuickRepliesAction = "স্মার্ট রিপ্লাই"
+    override val aiWriterAction = "AI লিখুন"
+    override val aiWriterTitle = "AI মেসেজ রাইটার (DeepSeek)"
+    override val aiWriterTabRewrite = "সাজিয়ে লিখুন"
+    override val aiWriterTabCompose = "নতুন করে লিখুন"
+    override val aiWriterRewriteHint = "মেসেজ বক্সে আগে কিছু লিখুন অথবা এখানে ড্রাফট লিখুন..."
+    override val aiWriterIdeaHint = "কী নিয়ে মেসেজ লিখতে চান? (যেমন: জন্মদিনের শুভেচ্ছা)..."
+    override val aiWriterGenerateAction = "AI দিয়ে তৈরি করুন"
+    override val aiWriterInsertAction = "মেসেজ বক্সে বসান"
+    override val aiWriterSendAction = "সরাসরি পাঠান"
+    override val aiTonePolite = "ভদ্র ও সুন্দর"
+    override val aiToneCasual = "বন্ধুসুলভ"
+    override val aiToneProfessional = "প্রফেশনাল"
+    override val aiToneBanglaPolish = "শুদ্ধ বাংলা"
+    override val aiToneEnglish = "ইংরেজিতে"
+    override val aiIdeaPreset1 = "বন্ধুকে জন্মদিনের সুন্দর শুভেচ্ছা"
+    override val aiIdeaPreset2 = "দেরি হওয়ার জন্য আন্তরিকভাবে দুঃখ প্রকাশ"
+    override val aiIdeaPreset3 = "সালাম দিয়ে কুশল বিনিময়"
+    override val aiIdeaPreset4 = "ধন্যবাদ ও কৃতজ্ঞতা প্রকাশ"
     override val aiSummarizeChatAction = "চ্যাট সারসংক্ষেপ (AI)"
     override val aiSummaryTitle = "AI চ্যাট সারসংক্ষেপ"
-    override val aiGenerating = "AI চিন্তা করছে..."
+    override val aiGenerating = "DeepSeek AI চিন্তা করছে..."
+    override val aiPoweredByDeepSeek = "DeepSeek AI দ্বারা চালিত"
     override val voiceCallAction = "অডিও কল"
     override val videoCallAction = "ভিডিও কল"
     override val liveCallsBannerTitle = "লাইভ অডিও ও ভিডিও কল চালু আছে"
@@ -804,13 +872,47 @@ object EnglishStrings : AppStrings {
     override val statusPostedToast = "Status posted"
     override val statusViewersLabel = "views"
     override val deleteStatus = "Delete Status"
-    override val aiAssistantTitle = "Smart Bangla AI"
+    override val aiAssistantTitle = "Bangla AI • DeepSeek"
+    override val aiAssistantSubtitle = "Ask anything, code, write, or translate with memory"
+    override val aiAssistantBannerBadge = "FREE AI"
+    override val aiAssistantMemoryBadge = "Memory Active • DeepSeek"
+    override val aiAssistantNewChat = "New Chat"
+    override val aiAssistantNewChatToast = "Started a fresh AI conversation"
+    override val aiAssistantInputHint = "Ask DeepSeek AI anything..."
+    override val aiAssistantWelcomeTitle = "Hello! I'm your DeepSeek AI Assistant"
+    override val aiAssistantWelcomeSubtitle = "Ask questions in Bangla or English, get coding help, or draft messages — I remember our chat context."
+    override val aiQuickPrompt1 = "Write a thoughtful Bangla status caption"
+    override val aiQuickPrompt2 = "Give me 5 quick tips to speak better English"
+    override val aiQuickPrompt3 = "Write a clean Python helper script"
+    override val aiQuickPrompt4 = "Draft a polite leave request message"
     override val aiTranslateAction = "AI Translate (Bangla ↔ English)"
     override val aiTranslatedLabel = "AI Translation"
+    override val aiExplainAction = "Explain with AI"
+    override val aiExplainTitle = "AI Message Explanation"
+    override val aiExplainOriginalLabel = "Original message"
     override val aiQuickRepliesAction = "Smart Replies"
+    override val aiWriterAction = "AI Write"
+    override val aiWriterTitle = "AI Message Writer (DeepSeek)"
+    override val aiWriterTabRewrite = "Polish Draft"
+    override val aiWriterTabCompose = "Write from Idea"
+    override val aiWriterRewriteHint = "Type your draft message here to polish or translate..."
+    override val aiWriterIdeaHint = "What do you want to say? (e.g., Birthday wish)..."
+    override val aiWriterGenerateAction = "Generate with AI"
+    override val aiWriterInsertAction = "Insert in Box"
+    override val aiWriterSendAction = "Send Now"
+    override val aiTonePolite = "Polite"
+    override val aiToneCasual = "Friendly"
+    override val aiToneProfessional = "Professional"
+    override val aiToneBanglaPolish = "Clean Bangla"
+    override val aiToneEnglish = "In English"
+    override val aiIdeaPreset1 = "Warm birthday wish for a friend"
+    override val aiIdeaPreset2 = "Polite apology for being late"
+    override val aiIdeaPreset3 = "Friendly greeting to check in"
+    override val aiIdeaPreset4 = "Heartfelt thank you message"
     override val aiSummarizeChatAction = "AI Chat Summary"
     override val aiSummaryTitle = "AI Chat Summary"
-    override val aiGenerating = "AI is thinking..."
+    override val aiGenerating = "DeepSeek AI is thinking..."
+    override val aiPoweredByDeepSeek = "Powered by DeepSeek AI"
     override val voiceCallAction = "Voice Call"
     override val videoCallAction = "Video Call"
     override val liveCallsBannerTitle = "Live HD Audio & Video Calling Ready"

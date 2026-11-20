@@ -46,6 +46,7 @@ import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.AddCircle
 import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.AutoFixHigh
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.CameraAlt
@@ -59,6 +60,7 @@ import androidx.compose.material.icons.rounded.DoneAll
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.Group
+import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.OpenInNew
@@ -186,6 +188,9 @@ fun ChatScreen(
     val quickReplies by viewModel.quickReplies.collectAsStateWithLifecycle()
     val quickRepliesLoading by viewModel.quickRepliesLoading.collectAsStateWithLifecycle()
     val summaryState by viewModel.summaryState.collectAsStateWithLifecycle()
+    val writerState by viewModel.writerState.collectAsStateWithLifecycle()
+    val explainState by viewModel.explainState.collectAsStateWithLifecycle()
+    val explainSourceText by viewModel.explainSourceText.collectAsStateWithLifecycle()
 
     val voiceRecorder = remember(context) { VoiceNoteRecorder(context) }
     val voicePlayer = remember { VoiceNotePlayer() }
@@ -213,6 +218,8 @@ fun ChatScreen(
     var showStarredSheet by remember { mutableStateOf(false) }
     var showDisappearingDialog by remember { mutableStateOf(false) }
     var showAiSummarySheet by remember { mutableStateOf(false) }
+    var showAiWriterSheet by remember { mutableStateOf(false) }
+    var showAiExplainSheet by remember { mutableStateOf(false) }
     var inChatSearchOpen by remember { mutableStateOf(false) }
     var inChatSearchQuery by remember { mutableStateOf("") }
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
@@ -887,73 +894,98 @@ fun ChatScreen(
                             }
                         }
                     } else {
-                        // Smart Bangla AI Quick Replies Strip
-                        if (messages.isNotEmpty() && editingMessage == null) {
+                        // Smart Bangla AI (DeepSeek) Tools Strip: Smart Reply + AI Writer
+                        if (editingMessage == null) {
                             LazyRow(
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                item(key = "ai_smart_reply_trigger") {
+                                item(key = "ai_writer_trigger") {
                                     AssistChip(
                                         onClick = {
-                                            if (!quickRepliesLoading) {
-                                                viewModel.generateQuickReplies(messages, preferences.language)
-                                            }
+                                            viewModel.resetWriterState()
+                                            showAiWriterSheet = true
                                         },
                                         label = {
                                             Text(
-                                                text = if (quickRepliesLoading) strings.aiGenerating
-                                                else strings.aiQuickRepliesAction,
+                                                text = strings.aiWriterAction,
                                                 style = MaterialTheme.typography.labelMedium
                                             )
                                         },
                                         leadingIcon = {
-                                            if (quickRepliesLoading) {
-                                                CircularProgressIndicator(
-                                                    modifier = Modifier.size(14.dp),
-                                                    strokeWidth = 2.dp,
-                                                    color = BrandPurple
+                                            Icon(
+                                                imageVector = Icons.Rounded.AutoFixHigh,
+                                                contentDescription = null,
+                                                tint = BrandBlue,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        },
+                                        modifier = Modifier.testTag("ai_writer_trigger")
+                                    )
+                                }
+                                if (messages.isNotEmpty()) {
+                                    item(key = "ai_smart_reply_trigger") {
+                                        AssistChip(
+                                            onClick = {
+                                                if (!quickRepliesLoading) {
+                                                    viewModel.generateQuickReplies(messages, preferences.language)
+                                                }
+                                            },
+                                            label = {
+                                                Text(
+                                                    text = if (quickRepliesLoading) strings.aiGenerating
+                                                    else strings.aiQuickRepliesAction,
+                                                    style = MaterialTheme.typography.labelMedium
                                                 )
-                                            } else {
+                                            },
+                                            leadingIcon = {
+                                                if (quickRepliesLoading) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(14.dp),
+                                                        strokeWidth = 2.dp,
+                                                        color = BrandPurple
+                                                    )
+                                                } else {
+                                                    Icon(
+                                                        imageVector = Icons.Rounded.AutoAwesome,
+                                                        contentDescription = null,
+                                                        tint = BrandPurple,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            },
+                                            modifier = Modifier.testTag("ai_quick_reply_trigger")
+                                        )
+                                    }
+                                    items(quickReplies, key = { it }) { suggestion ->
+                                        AssistChip(
+                                            onClick = {
+                                                viewModel.sendTextMessage(effectiveMyProfile, suggestion)
+                                                viewModel.clearQuickReplies()
+                                            },
+                                            label = {
+                                                Text(
+                                                    text = suggestion,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        )
+                                    }
+                                    if (quickReplies.isNotEmpty()) {
+                                        item(key = "clear_quick_replies") {
+                                            IconButton(
+                                                onClick = { viewModel.clearQuickReplies() },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
                                                 Icon(
-                                                    imageVector = Icons.Rounded.AutoAwesome,
-                                                    contentDescription = null,
-                                                    tint = BrandPurple,
+                                                    imageVector = Icons.Rounded.Close,
+                                                    contentDescription = strings.close,
                                                     modifier = Modifier.size(16.dp)
                                                 )
                                             }
-                                        },
-                                        modifier = Modifier.testTag("ai_quick_reply_trigger")
-                                    )
-                                }
-                                items(quickReplies, key = { it }) { suggestion ->
-                                    AssistChip(
-                                        onClick = {
-                                            viewModel.sendTextMessage(effectiveMyProfile, suggestion)
-                                            viewModel.clearQuickReplies()
-                                        },
-                                        label = {
-                                            Text(
-                                                text = suggestion,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-                                    )
-                                }
-                                if (quickReplies.isNotEmpty()) {
-                                    item(key = "clear_quick_replies") {
-                                        IconButton(
-                                            onClick = { viewModel.clearQuickReplies() },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Rounded.Close,
-                                                contentDescription = strings.close,
-                                                modifier = Modifier.size(16.dp)
-                                            )
                                         }
                                     }
                                 }
@@ -1316,6 +1348,16 @@ fun ChatScreen(
                         }
                     )
                     AttachOptionRow(
+                        icon = Icons.Rounded.Lightbulb,
+                        tint = Color(0xFFF59E0B),
+                        label = strings.aiExplainAction,
+                        onClick = {
+                            viewModel.explainMessage(msg.text, preferences.language)
+                            showAiExplainSheet = true
+                            selectedMessage = null
+                        }
+                    )
+                    AttachOptionRow(
                         icon = Icons.Rounded.ContentCopy,
                         tint = MaterialTheme.colorScheme.onSurface,
                         label = strings.copy,
@@ -1516,9 +1558,55 @@ fun ChatScreen(
         AiSummarySheet(
             summaryState = summaryState,
             onRetry = { viewModel.summarizeConversation(messages, preferences.language) },
+            onCopied = { scope.launch { snackbarHostState.showSnackbar(strings.copiedToClipboard) } },
             onDismiss = {
                 showAiSummarySheet = false
                 viewModel.resetSummaryState()
+            }
+        )
+    }
+
+    if (showAiWriterSheet) {
+        AiWriterSheet(
+            initialDraft = messageText,
+            writerState = writerState,
+            onRewriteDraft = { draft, tone ->
+                viewModel.rewriteDraft(draft, tone, preferences.language)
+            },
+            onGenerateFromIdea = { idea ->
+                viewModel.draftMessageFromIdea(idea, preferences.language)
+            },
+            onInsertResult = { generated ->
+                messageText = generated.take(4000)
+                showAiWriterSheet = false
+                viewModel.resetWriterState()
+            },
+            onSendResult = { generated ->
+                val clean = generated.trim()
+                if (clean.isNotEmpty()) {
+                    messageText = ""
+                    viewModel.sendTextMessage(effectiveMyProfile, clean)
+                    viewModel.clearQuickReplies()
+                }
+                showAiWriterSheet = false
+                viewModel.resetWriterState()
+            },
+            onDismiss = {
+                showAiWriterSheet = false
+                viewModel.resetWriterState()
+            }
+        )
+    }
+
+    if (showAiExplainSheet) {
+        AiExplainSheet(
+            sourceMessage = explainSourceText,
+            explainState = explainState,
+            onRetry = { viewModel.explainMessage(explainSourceText, preferences.language) },
+            onCopied = { scope.launch { snackbarHostState.showSnackbar(strings.copiedToClipboard) } },
+            onDismiss = {
+                showAiExplainSheet = false
+                viewModel.resetExplainState()
             }
         )
     }
