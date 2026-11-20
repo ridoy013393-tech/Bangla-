@@ -145,7 +145,26 @@ fun onGoogleSignInClicked(
             }
         } catch (e: GetCredentialCancellationException) {
             Log.w(AUTH_TAG, "Google Sign-In flow cancelled or dismissed: ${e.message}", e)
-            onAuthCancelled()
+            val detail = e.errorMessage?.toString().orEmpty().ifBlank { e.message.orEmpty() }
+            val isConfigOrBlockedError = detail.contains("28436", ignoreCase = true) ||
+                detail.contains("developer", ignoreCase = true) ||
+                detail.contains("temporarily blocked", ignoreCase = true) ||
+                detail.contains("sha", ignoreCase = true)
+            if (isConfigOrBlockedError) {
+                onAuthError("Google Sign-In error: $detail")
+            } else {
+                onAuthCancelled()
+            }
+        } catch (e: androidx.credentials.exceptions.NoCredentialException) {
+            Log.w(AUTH_TAG, "No Google credential available on device: ${e.message}", e)
+            onAuthError(
+                "কোনো Google অ্যাকাউন্ট পাওয়া যায়নি। ফোনের Settings → Accounts-এ Google অ্যাকাউন্ট লগইন আছে কিনা দেখুন। (${e.errorMessage ?: e.localizedMessage ?: "NoCredential"})"
+            )
+        } catch (e: androidx.credentials.exceptions.GetCredentialException) {
+            Log.e(AUTH_TAG, "Google Sign-In credential error (${e.type}): ${e.message}", e)
+            onAuthError(
+                "Google লগইন ব্যর্থ হয়েছে: ${e.errorMessage ?: e.localizedMessage ?: e.type}"
+            )
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
