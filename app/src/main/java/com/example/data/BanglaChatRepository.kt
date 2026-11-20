@@ -988,6 +988,8 @@ class BanglaChatRepository(
                     "lastMessageType" to safeType,
                     "lastSenderId" to uid,
                     "lastMessageTime" to FieldValue.serverTimestamp(),
+                    "lastMessageDelivered" to false,
+                    "lastMessageRead" to false,
                     "unreadCounts" to newUnread,
                     "typingUids" to chat.typingUids.filter { it != uid },
                     "participantNames" to updatedNames,
@@ -1098,6 +1100,8 @@ class BanglaChatRepository(
                     "lastMessageType" to "call",
                     "lastSenderId" to uid,
                     "lastMessageTime" to FieldValue.serverTimestamp(),
+                    "lastMessageDelivered" to (safeCallStatus == "answered"),
+                    "lastMessageRead" to (safeCallStatus == "answered"),
                     "unreadCounts" to updatedUnread,
                     "typingUids" to (existingChat?.typingUids ?: emptyList()).filter { it != uid },
                     "participantNames" to updatedNames,
@@ -1141,15 +1145,27 @@ class BanglaChatRepository(
             val uid = requireUserId()
             if (uid != currentUserId) return Result.success(Unit)
 
-            if (chat.unreadFor(currentUserId) > 0) {
-                val updatedUnread = chat.unreadCounts.toMutableMap()
-                updatedUnread[currentUserId] = 0L
-                db.collection("chats").document(chat.id).update(
-                    mapOf(
-                        "unreadCounts" to updatedUnread,
-                        "updatedAt" to FieldValue.serverTimestamp()
-                    )
-                ).await()
+            val isLastFromPeer = chat.lastSenderId.isNotBlank() && chat.lastSenderId != currentUserId
+            val needsUnreadReset = chat.unreadFor(currentUserId) > 0
+            val needsDeliveryFlag = isLastFromPeer && !chat.lastMessageDelivered
+            val needsReadFlag = isLastFromPeer && sendReadReceipts && !chat.lastMessageRead
+
+            if (needsUnreadReset || needsDeliveryFlag || needsReadFlag) {
+                val chatUpdates = mutableMapOf<String, Any>(
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+                if (needsUnreadReset) {
+                    val updatedUnread = chat.unreadCounts.toMutableMap()
+                    updatedUnread[currentUserId] = 0L
+                    chatUpdates["unreadCounts"] = updatedUnread
+                }
+                if (needsDeliveryFlag || needsReadFlag) {
+                    chatUpdates["lastMessageDelivered"] = true
+                }
+                if (needsReadFlag) {
+                    chatUpdates["lastMessageRead"] = true
+                }
+                db.collection("chats").document(chat.id).update(chatUpdates).await()
             }
 
             val incomingToUpdate = messages.filter { msg ->
@@ -1165,6 +1181,58 @@ class BanglaChatRepository(
                         mapOf(
                             "delivered" to true,
                             "read" to if (sendReadReceipts) true else msg.read,
+                            "updatedAt" to FieldValue.serverTimestamp()
+                        )
+                    )
+                }
+                batch.commit().await()
+            }
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, chatPath)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * WhatsApp-style automatic delivery receipt when recipient's device is online
+     * (flips sender's single grey tick ✓ to double grey tick ✓✓ even before opening the chat).
+     */
+    suspend fun markChatDelivered(chat: Chat, currentUserId: String): Result<Unit> {
+        val chatPath = "chats/${chat.id}"
+        return try {
+            val uid = auth.currentUser?.uid ?: return Result.success(Unit)
+            if (uid != currentUserId) return Result.success(Unit)
+            if (chat.lastSenderId.isBlank() || chat.lastSenderId == currentUserId) {
+                return Result.success(Unit)
+            }
+            if (!chat.lastMessageDelivered) {
+                db.collection("chats").document(chat.id).update(
+                    mapOf(
+                        "lastMessageDelivered" to true,
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                ).await()
+            }
+            val undeliveredSnap = db.collection("chats").document(chat.id)
+                .collection("messages")
+                .whereArrayContains("participants", currentUserId)
+                .whereEqualTo("delivered", false)
+                .limit(20)
+                .get()
+                .await()
+            val toDeliver = undeliveredSnap.documents.filter { doc ->
+                doc.getString("senderId") != currentUserId
+            }
+            if (toDeliver.isNotEmpty()) {
+                val batch = db.batch()
+                for (doc in toDeliver) {
+                    batch.update(
+                        doc.reference,
+                        mapOf(
+                            "delivered" to true,
                             "updatedAt" to FieldValue.serverTimestamp()
                         )
                     )
@@ -1649,7 +1717,7 @@ class BanglaChatRepository(
                     CallSession::class.java,
                     DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
                 ).filter { session ->
-                    session.status == "ringing" &&
+                    session.status in setOf("calling", "ringing") &&
                         session.calleeUid == currentUserId &&
                         (session.createdAt?.toDate()?.time ?: System.currentTimeMillis()) >= cutoff
                 }.sortedByDescending { it.createdAt ?: Timestamp(0, 0) }
@@ -1746,7 +1814,7 @@ class BanglaChatRepository(
                 "calleePhotoUrl" to callee.photoUrl.take(500),
                 "participants" to participants,
                 "callType" to safeType,
-                "status" to "ringing",
+                "status" to "calling",
                 "offerSdp" to offerSdp.take(25000),
                 "createdAt" to FieldValue.serverTimestamp(),
                 "updatedAt" to FieldValue.serverTimestamp()
@@ -1763,7 +1831,7 @@ class BanglaChatRepository(
                     calleePhotoUrl = callee.photoUrl,
                     participants = participants,
                     callType = safeType,
-                    status = "ringing",
+                    status = "calling",
                     offerSdp = offerSdp
                 )
             )
@@ -1793,6 +1861,10 @@ class BanglaChatRepository(
             handleFirestoreError(e, OperationType.UPDATE, path)
             Result.failure(e)
         }
+    }
+
+    suspend fun markCallSessionRinging(callId: String): Result<Unit> {
+        return updateCallSessionStatus(callId, "ringing")
     }
 
     suspend fun updateCallSessionStatus(callId: String, status: String): Result<Unit> {

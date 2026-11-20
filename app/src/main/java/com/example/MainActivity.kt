@@ -84,6 +84,7 @@ import com.example.viewmodel.MainViewModel
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -455,10 +456,36 @@ private fun AuthenticatedBanglaChatHost(
     val discoverableUsersState by mainViewModel.discoverableUsersState.collectAsStateWithLifecycle()
     val blockedUsers by mainViewModel.blockedUsers.collectAsStateWithLifecycle()
     val incomingCalls by mainViewModel.incomingCalls.collectAsStateWithLifecycle()
+    val isNetworkOnline by mainViewModel.isNetworkOnline.collectAsStateWithLifecycle()
     val blockedUids = remember(blockedUsers) { blockedUsers.map { it.blockedUid }.toSet() }
     val allChats = (chatsState as? UiState.Success)?.data.orEmpty()
     val discoverableContacts = (discoverableUsersState as? UiState.Success)?.data.orEmpty()
     val strings = LocalAppStrings.current
+
+    // WhatsApp-style foreground presence heartbeat every 45s so stale/offline devices never appear stuck online
+    LaunchedEffect(currentUserId, isNetworkOnline) {
+        if (!isNetworkOnline) return@LaunchedEffect
+        while (true) {
+            if (ActiveAppTracker.isAppInForeground) {
+                mainViewModel.setOnlinePresence(true)
+            }
+            delay(45_000L)
+        }
+    }
+
+    // Automatically acknowledge incoming messages as delivered (✓ -> ✓✓) when device is online
+    LaunchedEffect(allChats, isNetworkOnline) {
+        if (isNetworkOnline && allChats.isNotEmpty()) {
+            mainViewModel.acknowledgeIncomingChatsDelivered(allChats)
+        }
+    }
+
+    // WhatsApp-style handshake: transition incoming "calling" -> "ringing" as soon as online device receives it
+    LaunchedEffect(incomingCalls) {
+        incomingCalls.filter { it.status == "calling" }.forEach { session ->
+            mainViewModel.acknowledgeIncomingCallRinging(session)
+        }
+    }
 
     val callRepository = remember(app) { app.chatRepository }
     var activeCallRequest by remember { mutableStateOf<ActiveCallRequest?>(null) }
@@ -471,7 +498,7 @@ private fun AuthenticatedBanglaChatHost(
             NotificationHelper.cancelIncomingCallNotification(context, callId)
             val liveSession = incomingCalls.firstOrNull { it.id == callId }
                 ?: callRepository.getCallSession(callId).getOrNull()
-            if (liveSession != null && liveSession.status == "ringing") {
+            if (liveSession != null && liveSession.status in setOf("calling", "ringing")) {
                 activeCallRequest = ActiveCallRequest.Incoming(liveSession)
             }
         }
@@ -489,6 +516,7 @@ private fun AuthenticatedBanglaChatHost(
             request = currentCall,
             myProfile = effectiveMyProfile,
             repository = callRepository,
+            language = preferences.language,
             onCallClosed = { activeCallRequest = null }
         )
         return

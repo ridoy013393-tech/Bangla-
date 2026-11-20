@@ -8,6 +8,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -80,6 +81,7 @@ import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material.icons.rounded.Videocam
+import androidx.compose.material.icons.rounded.WifiOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
@@ -104,6 +106,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -142,6 +145,7 @@ import com.example.ui.components.UserAvatar
 import com.example.ui.components.formatCallDuration
 import com.example.ui.components.formatConversationTime
 import com.example.ui.components.formatFileSize
+import com.example.ui.components.formatLastSeenText
 import com.example.ui.components.formatMessageTime
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.BrandBlue
@@ -152,6 +156,7 @@ import com.example.ui.theme.IncomingBubbleLight
 import com.example.ui.theme.OnlineGreen
 import com.example.ui.theme.ReadTickBlue
 import com.example.viewmodel.ChatViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -359,12 +364,23 @@ fun ChatScreen(
         }
     }
 
+    var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(30_000L)
+            nowMillis = System.currentTimeMillis()
+        }
+    }
+
+    val peerVisiblyOnline = !isGroupChat && peerProfile?.isVisiblyOnline(nowMillis) == true
+    val peerEffectivelyOnline = !isGroupChat && peerProfile?.isEffectivelyOnline(nowMillis) == true
+
     val statusText = when {
         isPeerTyping -> strings.typingIndicator
         isGroupChat -> "${chat?.participants?.size ?: 0} ${strings.groupMembersSuffix}"
-        peerProfile?.showOnlineStatus == true && peerProfile?.online == true -> strings.onlineStatus
+        peerVisiblyOnline -> strings.onlineStatus
         peerProfile?.showLastSeen == true && peerProfile?.lastSeen != null ->
-            "${strings.lastSeenPrefix} ${formatConversationTime(peerProfile?.lastSeen)}"
+            formatLastSeenText(peerProfile?.lastSeen, preferences.language, nowMillis)
         else -> strings.offlineStatus
     }
 
@@ -430,7 +446,7 @@ fun ChatScreen(
                                     photoUrl = peerPhoto,
                                     size = 42.dp,
                                     showOnlineIndicator = !isGroupChat,
-                                    isOnline = !isGroupChat && peerProfile?.showOnlineStatus == true && peerProfile?.online == true
+                                    isOnline = peerVisiblyOnline
                                 )
                             }
                             Spacer(modifier = Modifier.width(10.dp))
@@ -570,6 +586,40 @@ fun ChatScreen(
                                     )
                                 }
                             }
+                        }
+                    }
+
+                    // Compact WhatsApp-style Peer Offline Notice Bar
+                    AnimatedVisibility(
+                        visible = !isGroupChat &&
+                            peerProfile != null &&
+                            !peerEffectivelyOnline &&
+                            !isPeerBlocked &&
+                            !isPeerTyping
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f))
+                                .padding(horizontal = 14.dp, vertical = 5.dp)
+                                .testTag("peer_offline_banner"),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.WifiOff,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = strings.peerOfflineBannerText,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
 
@@ -1306,6 +1356,49 @@ fun ChatScreen(
                         }
                     }
 
+                    // WhatsApp-style Message Delivery / Read Status Card for own sent messages
+                    if (msg.senderId == viewModel.currentUserId) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        val (statusIcon, statusTint, statusDesc) = when {
+                            msg.read -> Triple(Icons.Rounded.DoneAll, ReadTickBlue, strings.messageStatusRead)
+                            msg.delivered -> Triple(Icons.Rounded.DoneAll, MaterialTheme.colorScheme.onSurfaceVariant, strings.messageStatusDelivered)
+                            else -> Triple(Icons.Rounded.Done, MaterialTheme.colorScheme.onSurfaceVariant, strings.messageStatusSentOffline)
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("message_delivery_status_card")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = statusIcon,
+                                    contentDescription = statusDesc,
+                                    tint = statusTint,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = strings.messageStatusLabel,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = statusDesc,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(14.dp))
                     HorizontalDivider()
 
@@ -1583,6 +1676,8 @@ fun ChatScreen(
             peerPhoto = peerPhoto,
             peerProfile = peerProfile,
             isPeerBlocked = isPeerBlocked,
+            language = preferences.language,
+            nowMillis = nowMillis,
             onBlockToggle = {
                 if (peerUid.isNotBlank()) {
                     if (isPeerBlocked) onUnblockPeer(peerUid)

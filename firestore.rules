@@ -150,6 +150,7 @@ service cloud.firestore {
                'participants', 'participantNames', 'participantPhotos',
                'isGroup', 'groupName', 'groupPhotoUrl', 'adminUids',
                'lastMessage', 'lastMessageType', 'lastSenderId', 'lastMessageTime',
+               'lastMessageDelivered', 'lastMessageRead',
                'unreadCounts', 'typingUids',
                'pinnedMessageId', 'pinnedMessageText', 'pinnedMessageSender',
                'disappearingHours', 'mutedBy', 'pinnedBy', 'archivedBy',
@@ -169,6 +170,8 @@ service cloud.firestore {
              data.lastMessageType in ['text', 'image', 'document', 'audio', 'call'] &&
              data.lastSenderId is string && data.lastSenderId.size() <= 128 &&
              data.lastMessageTime is timestamp && data.lastMessageTime <= request.time &&
+             (!('lastMessageDelivered' in data) || data.lastMessageDelivered == null || data.lastMessageDelivered is bool) &&
+             (!('lastMessageRead' in data) || data.lastMessageRead == null || data.lastMessageRead is bool) &&
              data.unreadCounts is map && data.unreadCounts.size() <= 50 &&
              isValidUidList(data.typingUids) &&
              (!('pinnedMessageId' in data) || data.pinnedMessageId == null || (data.pinnedMessageId is string && data.pinnedMessageId.size() <= 128)) &&
@@ -269,7 +272,7 @@ service cloud.firestore {
              data.participants is list && data.participants.size() == 2 &&
              data.callerUid in data.participants && data.calleeUid in data.participants &&
              data.callType in ['audio', 'video'] &&
-             data.status in ['ringing', 'accepted', 'declined', 'ended', 'missed'] &&
+             data.status in ['calling', 'ringing', 'accepted', 'declined', 'ended', 'missed'] &&
              (!('offerSdp' in data) || data.offerSdp == null || (data.offerSdp is string && data.offerSdp.size() <= 25000)) &&
              (!('answerSdp' in data) || data.answerSdp == null || (data.answerSdp is string && data.answerSdp.size() <= 25000)) &&
              data.createdAt is timestamp && data.createdAt <= request.time &&
@@ -467,7 +470,7 @@ service cloud.firestore {
       allow create: if isSignedIn() &&
                        isValidId(callId) &&
                        incoming().callerUid == request.auth.uid &&
-                       incoming().status == 'ringing' &&
+                       incoming().status in ['calling', 'ringing'] &&
                        isValidCallSession(incoming()) &&
                        !isBlockedBetween(incoming().callerUid, incoming().calleeUid);
 
@@ -530,10 +533,13 @@ service cloud.firestore {
                            (!isDirectChatBlocked(existing()) &&
                             incoming().diff(existing()).affectedKeys().hasOnly([
                               'lastMessage', 'lastMessageType', 'lastSenderId', 'lastMessageTime',
+                              'lastMessageDelivered', 'lastMessageRead',
                               'unreadCounts', 'typingUids', 'participantNames', 'participantPhotos', 'updatedAt'
                             ])) ||
-                           // Action 2: Reset own unread count
-                           incoming().diff(existing()).affectedKeys().hasOnly(['unreadCounts', 'updatedAt']) ||
+                           // Action 2: Reset own unread count or acknowledge last message delivered/read receipt
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'unreadCounts', 'lastMessageDelivered', 'lastMessageRead', 'updatedAt'
+                           ]) ||
                            // Action 3: Toggle typing indicator
                            incoming().diff(existing()).affectedKeys().hasOnly(['typingUids', 'updatedAt']) ||
                            // Action 4: Pin or unpin a message in the chat

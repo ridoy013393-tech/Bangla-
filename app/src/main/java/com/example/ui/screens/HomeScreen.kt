@@ -435,6 +435,7 @@ fun HomeScreen(
                             knownProfiles = discoverableProfiles,
                             favorites = favorites,
                             blockedUsers = blockedUsers,
+                            language = preferences.language,
                             onSearchUsername = { query -> viewModel.searchUserByExactUsername(query) },
                             onClearUsernameSearch = { viewModel.clearUsernameSearch() },
                             onStartChat = { peer: PublicProfile ->

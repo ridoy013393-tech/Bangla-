@@ -263,6 +263,9 @@ interface AppStrings {
     val incomingVoiceCall: String
     val incomingVideoCall: String
     val callingStatus: String
+    val ringingStatus: String
+    val callPeerOfflineNotice: String
+    val callNoAnswerTimeout: String
     val connectingStatus: String
     val callEndedStatus: String
     val acceptCall: String
@@ -382,6 +385,12 @@ interface AppStrings {
     val privacyPolicyBody: String
     val termsBody: String
     val helpSupportBody: String
+    // WhatsApp-style offline presence & message delivery status
+    val peerOfflineBannerText: String
+    val messageStatusLabel: String
+    val messageStatusSentOffline: String
+    val messageStatusDelivered: String
+    val messageStatusRead: String
 }
 
 object BanglaStrings : AppStrings {
@@ -632,7 +641,10 @@ object BanglaStrings : AppStrings {
     override val quickCallFriends = "দ্রুত কল করুন"
     override val incomingVoiceCall = "ইনকামিং অডিও কল..."
     override val incomingVideoCall = "ইনকামিং ভিডিও কল..."
-    override val callingStatus = "রিং হচ্ছে..."
+    override val callingStatus = "কল হচ্ছে..."
+    override val ringingStatus = "রিং হচ্ছে..."
+    override val callPeerOfflineNotice = "অফলাইনে আছেন — অনলাইনে এলে রিং যাবে"
+    override val callNoAnswerTimeout = "কোনো উত্তর পাওয়া যায়নি"
     override val connectingStatus = "সংযোগ হচ্ছে..."
     override val callEndedStatus = "কল শেষ হয়েছে"
     override val acceptCall = "রিসিভ"
@@ -744,6 +756,11 @@ object BanglaStrings : AppStrings {
     override val privacyPolicyBody = "Bangla Chat আপনার ব্যক্তিগত ইমেইল, ফোন নম্বর ও নোটিফিকেশন টোকেন একটি সুরক্ষিত owner-only Firestore ডকুমেন্টে আলাদা রাখে যা জিরো-ট্রাস্ট সিকিউরিটি রুলস দিয়ে সুরক্ষিত। পাবলিক প্রোফাইলে শুধু সেই তথ্যই দেখা যায় যা আপনি অনুমতি দিয়েছেন। সব মেসেজ TLS-এর মাধ্যমে Firebase Cloud Firestore-এ সুরক্ষিতভাবে আদান-প্রদান হয়।"
     override val termsBody = "Bangla Chat সম্মানজনকভাবে ব্যবহার করুন। হয়রানি, ভুয়া পরিচয় বা স্প্যামিং সম্পূর্ণ নিষিদ্ধ। প্রয়োজনে যেকোনো চ্যাট বা প্রোফাইল থেকে সরাসরি ব্লক বা রিপোর্ট করতে পারবেন।"
     override val helpSupportBody = "• বন্ধু খুঁজতে কন্টাক্ট ট্যাবে সঠিক @username লিখে সার্চ করুন।\n• নতুন চ্যাট বা নতুন গ্রুপ তৈরি করতে হোম স্ক্রিনের নিচের কলম (✏️) আইকনে ট্যাপ করুন।\n• অনলাইন স্ট্যাটাস, লাস্ট সিন, রিড রিসিপ্ট ও অ্যাপ লক পিন 'গোপনীয়তা ও নিরাপত্তা' সেকশন থেকে নিয়ন্ত্রণ করুন।\n• যেকোনো মেসেজ লং-প্রেস করে 'আমার জন্য মুছুন' দিয়ে শুধু নিজের চ্যাট থেকে সরাতে পারবেন।"
+    override val peerOfflineBannerText = "অফলাইনে আছেন — মেসেজ পাঠানো থাকবে, অনলাইনে এলে পৌঁছে যাবে"
+    override val messageStatusLabel = "মেসেজ স্ট্যাটাস"
+    override val messageStatusSentOffline = "পাঠানো হয়েছে (✓) — এখনো ফোনে পৌঁছায়নি (অফলাইন)"
+    override val messageStatusDelivered = "পৌঁছেছে (✓✓) — ফোনে ডেলিভার্ড হয়েছে (অনলাইন)"
+    override val messageStatusRead = "দেখা হয়েছে (✓✓ নীল) — মেসেজটি পড়েছে"
 }
 
 object EnglishStrings : AppStrings {
@@ -994,7 +1011,10 @@ object EnglishStrings : AppStrings {
     override val quickCallFriends = "Quick Call"
     override val incomingVoiceCall = "Incoming voice call..."
     override val incomingVideoCall = "Incoming video call..."
-    override val callingStatus = "Ringing..."
+    override val callingStatus = "Calling..."
+    override val ringingStatus = "Ringing..."
+    override val callPeerOfflineNotice = "User is offline — will ring when back online"
+    override val callNoAnswerTimeout = "No answer"
     override val connectingStatus = "Connecting..."
     override val callEndedStatus = "Call ended"
     override val acceptCall = "Accept"
@@ -1106,6 +1126,11 @@ object EnglishStrings : AppStrings {
     override val privacyPolicyBody = "Bangla Chat isolates your private email, phone number, and notification tokens in an owner-only Firestore document protected by zero-trust Security Rules. Public discovery only exposes fields you explicitly choose to share. Messages are transmitted securely over TLS via Firebase Cloud Firestore."
     override val termsBody = "Use Bangla Chat respectfully. Harassment, impersonation, and spam are strictly prohibited. You can block or report abusive accounts directly from any profile or conversation."
     override val helpSupportBody = "• Find friends in the Contacts tab by searching their exact @username.\n• Tap the pencil (✏️) button on the Chats screen to start a New Chat or create a New Group.\n• Manage Online Status, Last Seen, Read Receipts, App Lock PIN, and Screenshot Protection under Privacy & Security.\n• Long-press any message and tap 'Delete for me' to remove it only from your view."
+    override val peerOfflineBannerText = "Currently offline — messages will be delivered once online"
+    override val messageStatusLabel = "Message Status"
+    override val messageStatusSentOffline = "Sent (✓) — not delivered yet (offline)"
+    override val messageStatusDelivered = "Delivered (✓✓) — reached recipient's phone"
+    override val messageStatusRead = "Read (✓✓ blue) — seen by recipient"
 }
 
 fun stringsForLanguage(language: AppLanguage): AppStrings =

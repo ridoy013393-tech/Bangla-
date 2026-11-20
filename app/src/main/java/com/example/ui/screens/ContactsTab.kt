@@ -53,6 +53,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -69,9 +70,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.BanglaChatRepository
+import com.example.model.AppLanguage
 import com.example.model.BlockedUser
 import com.example.model.FavoriteContact
 import com.example.model.PublicProfile
+import com.example.ui.components.PresenceStatusPill
 import com.example.ui.components.UserAvatar
 import com.example.ui.components.formatFullDate
 import com.example.ui.i18n.LocalAppStrings
@@ -88,6 +91,7 @@ fun ContactsTab(
     knownProfiles: List<PublicProfile>,
     favorites: List<FavoriteContact>,
     blockedUsers: List<BlockedUser>,
+    language: AppLanguage,
     onSearchUsername: (String) -> Unit,
     onClearUsernameSearch: () -> Unit,
     onStartChat: (PublicProfile) -> Unit,
@@ -102,6 +106,14 @@ fun ContactsTab(
     var query by rememberSaveable { mutableStateOf("") }
     var selectedProfile by remember { mutableStateOf<PublicProfile?>(null) }
     var reportTarget by remember { mutableStateOf<PublicProfile?>(null) }
+    var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(30_000L)
+            nowMillis = System.currentTimeMillis()
+        }
+    }
 
     val favoriteUids = remember(favorites) { favorites.map { it.favoriteUid }.toSet() }
     val blockedUids = remember(blockedUsers) { blockedUsers.map { it.blockedUid }.toSet() }
@@ -241,7 +253,7 @@ fun ContactsTab(
                                     photoUrl = fav.photoUrl,
                                     size = 54.dp,
                                     showOnlineIndicator = true,
-                                    isOnline = fullProfile.showOnlineStatus && fullProfile.online
+                                    isOnline = fullProfile.isVisiblyOnline(nowMillis)
                                 )
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
@@ -438,7 +450,7 @@ fun ContactsTab(
                                         photoUrl = profile.visiblePhotoUrl(),
                                         size = 56.dp,
                                         showOnlineIndicator = true,
-                                        isOnline = profile.showOnlineStatus && profile.online
+                                        isOnline = profile.isVisiblyOnline(nowMillis)
                                     )
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column(modifier = Modifier.weight(1f)) {
@@ -456,8 +468,15 @@ fun ContactsTab(
                                             fontWeight = FontWeight.SemiBold,
                                             maxLines = 1
                                         )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        PresenceStatusPill(
+                                            profile = profile,
+                                            language = language,
+                                            nowMillis = nowMillis
+                                        )
                                         val bio = profile.visibleAbout()
                                         if (bio.isNotBlank()) {
+                                            Spacer(modifier = Modifier.height(4.dp))
                                             Text(
                                                 text = bio,
                                                 style = MaterialTheme.typography.bodySmall,
@@ -557,7 +576,7 @@ fun ContactsTab(
                     photoUrl = profile.visiblePhotoUrl(),
                     size = 82.dp,
                     showOnlineIndicator = true,
-                    isOnline = profile.showOnlineStatus && profile.online
+                    isOnline = profile.isVisiblyOnline(nowMillis)
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
@@ -569,6 +588,12 @@ fun ContactsTab(
                     text = "@${profile.username}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = BrandBlue
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                PresenceStatusPill(
+                    profile = profile,
+                    language = language,
+                    nowMillis = nowMillis
                 )
                 if (profile.phoneLookup.isNotBlank()) {
                     Spacer(modifier = Modifier.height(4.dp))

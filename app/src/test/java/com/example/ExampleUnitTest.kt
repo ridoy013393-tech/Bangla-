@@ -95,5 +95,58 @@ class ExampleUnitTest {
         assertTrue(msg.isDeletedFor("bob"))
         assertFalse(msg.isDeletedFor("alice"))
     }
+
+    @Test
+    fun staleAwareOnlinePresenceChecks() {
+        val nowMs = 1_750_000_000_000L
+        val freshHeartbeat = com.google.firebase.Timestamp((nowMs - 30_000L) / 1000L, 0)
+        val staleHeartbeat = com.google.firebase.Timestamp((nowMs - 180_000L) / 1000L, 0)
+
+        val activeUser = com.example.model.PublicProfile(
+            uid = "u1",
+            name = "Active",
+            online = true,
+            showOnlineStatus = true,
+            lastSeen = freshHeartbeat
+        )
+        assertTrue(activeUser.isEffectivelyOnline(nowMs))
+        assertTrue(activeUser.isVisiblyOnline(nowMs))
+
+        val hiddenOnlineUser = activeUser.copy(showOnlineStatus = false)
+        assertTrue(hiddenOnlineUser.isEffectivelyOnline(nowMs))
+        assertFalse(hiddenOnlineUser.isVisiblyOnline(nowMs))
+
+        val staleStuckUser = activeUser.copy(lastSeen = staleHeartbeat)
+        assertFalse(staleStuckUser.isEffectivelyOnline(nowMs))
+        assertFalse(staleStuckUser.isVisiblyOnline(nowMs))
+
+        val offlineUser = activeUser.copy(online = false)
+        assertFalse(offlineUser.isEffectivelyOnline(nowMs))
+        assertFalse(offlineUser.isVisiblyOnline(nowMs))
+    }
+
+    @Test
+    fun lastSeenFormattingInBanglaAndEnglish() {
+        val nowMs = 1_750_000_000_000L
+        val justNowTs = com.google.firebase.Timestamp((nowMs - 20_000L) / 1000L, 0)
+        val fiveMinAgoTs = com.google.firebase.Timestamp((nowMs - 5 * 60_000L) / 1000L, 0)
+
+        assertEquals(
+            "সর্বশেষ দেখা এইমাত্র",
+            com.example.ui.components.formatLastSeenText(justNowTs, AppLanguage.BANGLA, nowMs)
+        )
+        assertEquals(
+            "Last seen just now",
+            com.example.ui.components.formatLastSeenText(justNowTs, AppLanguage.ENGLISH, nowMs)
+        )
+        assertEquals(
+            "সর্বশেষ দেখা ৫ মিনিট আগে",
+            com.example.ui.components.formatLastSeenText(fiveMinAgoTs, AppLanguage.BANGLA, nowMs)
+        )
+        assertEquals(
+            "Last seen 5 min ago",
+            com.example.ui.components.formatLastSeenText(fiveMinAgoTs, AppLanguage.ENGLISH, nowMs)
+        )
+    }
 }
 

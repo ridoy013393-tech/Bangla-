@@ -33,7 +33,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -59,6 +61,7 @@ import com.example.ui.theme.BrandBlue
 import com.example.ui.theme.BrandPurple
 import com.example.ui.theme.DangerRed
 import com.example.ui.theme.OnlineGreen
+import kotlinx.coroutines.delay
 
 @Composable
 fun CallsTab(
@@ -69,6 +72,14 @@ fun CallsTab(
 ) {
     val strings = LocalAppStrings.current
     var selectedFilter by remember { mutableStateOf(CallFilter.ALL) }
+    var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(30_000L)
+            nowMillis = System.currentTimeMillis()
+        }
+    }
 
     val profileByUid = remember(discoverableProfiles) {
         discoverableProfiles.associateBy { it.uid }
@@ -162,7 +173,7 @@ fun CallsTab(
                                         photoUrl = peer.visiblePhotoUrl(),
                                         size = 48.dp,
                                         showOnlineIndicator = true,
-                                        isOnline = peer.showOnlineStatus && peer.online
+                                        isOnline = peer.isVisiblyOnline(nowMillis)
                                     )
                                     Spacer(modifier = Modifier.height(6.dp))
                                     Text(
@@ -290,7 +301,9 @@ fun CallsTab(
                         UserAvatar(
                             name = log.peerName,
                             photoUrl = log.peerPhotoUrl,
-                            size = 48.dp
+                            size = 48.dp,
+                            showOnlineIndicator = log.peerUid.isNotBlank(),
+                            isOnline = resolvedPeer.isVisiblyOnline(nowMillis)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {

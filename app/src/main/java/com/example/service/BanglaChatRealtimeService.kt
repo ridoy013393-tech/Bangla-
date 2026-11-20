@@ -17,6 +17,7 @@ import com.example.model.Chat
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 
@@ -137,6 +138,13 @@ class BanglaChatRealtimeService : Service() {
                     }.getOrNull()
                 }
 
+                // Acknowledge WhatsApp-style delivery receipts as soon as this device receives chats online
+                for (chat in chats) {
+                    if (chat.lastSenderId.isNotBlank() && chat.lastSenderId != uid && !chat.lastMessageDelivered) {
+                        acknowledgeChatDelivered(db, chat.id, uid)
+                    }
+                }
+
                 if (!chatsBaselineLoaded) {
                     chats.forEach { chat ->
                         lastNotifiedMessageKey[chat.id] = buildMessageDedupKey(chat)
@@ -208,7 +216,7 @@ class BanglaChatRealtimeService : Service() {
                         doc.toObject(CallSession::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
                     }.getOrNull()
                 }.filter { session ->
-                    session.status == "ringing" &&
+                    session.status in setOf("calling", "ringing") &&
                         session.calleeUid == uid &&
                         (session.createdAt?.toDate()?.time ?: System.currentTimeMillis()) >= cutoffMs
                 }
@@ -222,8 +230,16 @@ class BanglaChatRealtimeService : Service() {
                     NotificationHelper.cancelIncomingCallNotification(applicationContext, endedId)
                 }
 
-                // Ring & notify for new incoming ringing calls
+                // Acknowledge delivery ('calling' -> 'ringing') so caller hears ringback, then ring callee phone
                 for (session in ringingSessions) {
+                    if (session.status == "calling") {
+                        db.collection("callSessions").document(session.id).update(
+                            mapOf(
+                                "status" to "ringing",
+                                "updatedAt" to FieldValue.serverTimestamp()
+                            )
+                        )
+                    }
                     if (ActiveAppTracker.activeCallId == session.id) continue
                     val isNewRing = activeRingingCallIds.add(session.id)
                     if (isNewRing) {
@@ -236,6 +252,36 @@ class BanglaChatRealtimeService : Service() {
                         )
                     }
                 }
+            }
+    }
+
+    private fun acknowledgeChatDelivered(db: FirebaseFirestore, chatId: String, currentUid: String) {
+        db.collection("chats").document(chatId).update(
+            mapOf(
+                "lastMessageDelivered" to true,
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+        )
+        db.collection("chats").document(chatId)
+            .collection("messages")
+            .whereArrayContains("participants", currentUid)
+            .whereEqualTo("delivered", false)
+            .limit(15)
+            .get()
+            .addOnSuccessListener { snap ->
+                val toDeliver = snap.documents.filter { it.getString("senderId") != currentUid }
+                if (toDeliver.isEmpty()) return@addOnSuccessListener
+                val batch = db.batch()
+                for (doc in toDeliver) {
+                    batch.update(
+                        doc.reference,
+                        mapOf(
+                            "delivered" to true,
+                            "updatedAt" to FieldValue.serverTimestamp()
+                        )
+                    )
+                }
+                batch.commit()
             }
     }
 

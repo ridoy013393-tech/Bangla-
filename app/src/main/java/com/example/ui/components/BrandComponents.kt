@@ -12,10 +12,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.WifiOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -40,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.model.AppLanguage
+import com.example.model.PublicProfile
 import com.example.ui.theme.BrandBlue
 import com.example.ui.theme.BrandBlueDark
 import com.example.ui.theme.BrandBlueLight
@@ -617,4 +620,106 @@ fun formatCallDuration(seconds: Long, language: AppLanguage): String {
         }
     }
 }
+
+/**
+ * WhatsApp-style localized Last Seen formatting:
+ * - < 1 min: "সর্বশেষ দেখা এইমাত্র" / "Last seen just now"
+ * - < 60 min: "সর্বশেষ দেখা ৫ মিনিট আগে" / "Last seen 5 min ago"
+ * - Same day: "সর্বশেষ দেখা আজ ২:৩০ PM" / "Last seen today at 2:30 PM"
+ * - Yesterday: "সর্বশেষ দেখা গতকাল ২:৩০ PM" / "Last seen yesterday at 2:30 PM"
+ * - Older: "সর্বশেষ দেখা ১৮ Nov, ২:৩০ PM" / "Last seen 18 Nov, 2:30 PM"
+ */
+fun formatLastSeenText(
+    timestamp: Timestamp?,
+    language: AppLanguage,
+    nowMillis: Long = System.currentTimeMillis()
+): String {
+    if (timestamp == null) {
+        return if (language == AppLanguage.BANGLA) "অফলাইন" else "Offline"
+    }
+    val date = timestamp.toDate()
+    val diffMs = (nowMillis - date.time).coerceAtLeast(0L)
+    val diffMins = diffMs / 60_000L
+
+    if (diffMs < 60_000L) {
+        return if (language == AppLanguage.BANGLA) "সর্বশেষ দেখা এইমাত্র" else "Last seen just now"
+    }
+    if (diffMins < 60L) {
+        return if (language == AppLanguage.BANGLA) {
+            "সর্বশেষ দেখা ${toBanglaDigits(diffMins.toString())} মিনিট আগে"
+        } else {
+            "Last seen $diffMins min ago"
+        }
+    }
+
+    val nowCal = Calendar.getInstance().apply { timeInMillis = nowMillis }
+    val targetCal = Calendar.getInstance().apply { time = date }
+    val rawTime = SimpleDateFormat("h:mm a", Locale.US).format(date)
+    val displayTime = if (language == AppLanguage.BANGLA) toBanglaDigits(rawTime) else rawTime
+
+    val sameYear = nowCal.get(Calendar.YEAR) == targetCal.get(Calendar.YEAR)
+    val dayDiff = nowCal.get(Calendar.DAY_OF_YEAR) - targetCal.get(Calendar.DAY_OF_YEAR)
+
+    return when {
+        sameYear && dayDiff == 0 -> {
+            if (language == AppLanguage.BANGLA) "সর্বশেষ দেখা আজ $displayTime"
+            else "Last seen today at $displayTime"
+        }
+        sameYear && dayDiff == 1 -> {
+            if (language == AppLanguage.BANGLA) "সর্বশেষ দেখা গতকাল $displayTime"
+            else "Last seen yesterday at $displayTime"
+        }
+        else -> {
+            val rawDate = SimpleDateFormat("dd MMM", Locale.US).format(date)
+            val displayDate = if (language == AppLanguage.BANGLA) toBanglaDigits(rawDate) else rawDate
+            if (language == AppLanguage.BANGLA) "সর্বশেষ দেখা $displayDate, $displayTime"
+            else "Last seen $displayDate, $displayTime"
+        }
+    }
+}
+
+@Composable
+fun PresenceStatusPill(
+    profile: PublicProfile?,
+    language: AppLanguage,
+    nowMillis: Long = System.currentTimeMillis(),
+    modifier: Modifier = Modifier
+) {
+    val isOnline = profile?.isVisiblyOnline(nowMillis) == true
+    val label = when {
+        isOnline -> if (language == AppLanguage.BANGLA) "এখন অনলাইনে আছেন" else "Online now"
+        profile?.showLastSeen == true && profile.lastSeen != null ->
+            formatLastSeenText(profile.lastSeen, language, nowMillis)
+        else -> if (language == AppLanguage.BANGLA) "অফলাইনে আছেন" else "Offline"
+    }
+    val dotColor = if (isOnline) OnlineGreen else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
+    val bgColor = if (isOnline) OnlineGreen.copy(alpha = 0.14f)
+    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+    val textColor = if (isOnline) OnlineGreen else MaterialTheme.colorScheme.onSurfaceVariant
+
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = bgColor,
+        modifier = modifier
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(dotColor)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = textColor
+            )
+        }
+    }
+}
+
 

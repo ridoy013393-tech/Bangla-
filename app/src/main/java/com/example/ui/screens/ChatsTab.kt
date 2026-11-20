@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Done
 import androidx.compose.material.icons.rounded.DoneAll
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
@@ -50,7 +51,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -76,6 +79,7 @@ import com.example.ui.theme.BrandBlue
 import com.example.ui.theme.BrandPurple
 import com.example.ui.theme.OnlineGreen
 import com.example.ui.theme.ReadTickBlue
+import kotlinx.coroutines.delay
 
 enum class ChatListFilter {
     ALL,
@@ -115,6 +119,14 @@ fun ChatsTab(
     }
     var actionTargetChat by remember { mutableStateOf<Chat?>(null) }
     var showArchived by remember { mutableStateOf(false) }
+    var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(30_000L)
+            nowMillis = System.currentTimeMillis()
+        }
+    }
 
     PullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -278,7 +290,7 @@ fun ChatsTab(
                                     else peerProfile?.name?.ifBlank { chat.peerName(currentUserId) }
                                         ?: chat.peerName(currentUserId),
                                     peerPhoto = peerPhoto,
-                                    peerOnline = !chat.isGroup && peerProfile?.let { it.showOnlineStatus && it.online } == true,
+                                    peerOnline = !chat.isGroup && peerProfile?.isVisiblyOnline(nowMillis) == true,
                                     isPeerTyping = isPeerTyping,
                                     onClick = { onChatClick(chat.id) },
                                     onLongClick = { actionTargetChat = chat }
@@ -371,7 +383,7 @@ fun ChatsTab(
                         items(activeChats, key = { it.id }) { chat ->
                             val peerUid = chat.peerUid(currentUserId)
                             val peerProfile = if (chat.isGroup) null else profileByUid[peerUid]
-                            val peerOnline = !chat.isGroup && peerProfile?.let { it.showOnlineStatus && it.online } == true
+                            val peerOnline = !chat.isGroup && peerProfile?.isVisiblyOnline(nowMillis) == true
                             val isPeerTyping = if (chat.isGroup) {
                                 chat.typingUids.any { it != currentUserId }
                             } else {
@@ -747,10 +759,24 @@ private fun ConversationRow(
                         )
                     }
                 } else if (sentByMe && chat.lastMessage.isNotBlank()) {
+                    val tickIcon = if (chat.lastMessageRead || chat.lastMessageDelivered) {
+                        Icons.Rounded.DoneAll
+                    } else {
+                        Icons.Rounded.Done
+                    }
+                    val tickTint = if (chat.lastMessageRead) {
+                        ReadTickBlue
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
                     Icon(
-                        imageVector = Icons.Rounded.DoneAll,
-                        contentDescription = null,
-                        tint = ReadTickBlue,
+                        imageVector = tickIcon,
+                        contentDescription = when {
+                            chat.lastMessageRead -> strings.messageStatusRead
+                            chat.lastMessageDelivered -> strings.messageStatusDelivered
+                            else -> strings.messageStatusSentOffline
+                        },
+                        tint = tickTint,
                         modifier = Modifier.size(18.dp)
                     )
                 }

@@ -327,6 +327,32 @@ class MainViewModel(
         }
     }
 
+    private val lastDeliveredAckKey = mutableMapOf<String, String>()
+
+    fun acknowledgeIncomingChatsDelivered(chats: List<Chat>) {
+        chats.forEach { chat ->
+            if (chat.lastSenderId.isNotBlank() &&
+                chat.lastSenderId != currentUserId &&
+                !chat.lastMessageDelivered
+            ) {
+                val ackKey = "${chat.lastSenderId}_${chat.lastMessageTime?.seconds ?: 0L}_${chat.lastMessage.hashCode()}"
+                if (lastDeliveredAckKey[chat.id] != ackKey) {
+                    lastDeliveredAckKey[chat.id] = ackKey
+                    viewModelScope.launch {
+                        repository.markChatDelivered(chat, currentUserId)
+                    }
+                }
+            }
+        }
+    }
+
+    fun acknowledgeIncomingCallRinging(session: CallSession) {
+        if (session.status != "calling" || session.calleeUid != currentUserId) return
+        viewModelScope.launch {
+            repository.markCallSessionRinging(session.id)
+        }
+    }
+
     fun declineIncomingCall(session: CallSession) {
         viewModelScope.launch {
             repository.updateCallSessionStatus(session.id, "declined")

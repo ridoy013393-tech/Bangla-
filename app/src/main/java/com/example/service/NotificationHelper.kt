@@ -13,6 +13,7 @@ import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.Ringtone
 import android.media.RingtoneManager
+import android.media.ToneGenerator
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -169,6 +170,75 @@ object CallRingtonePlayer {
             activeVibrator?.cancel()
         }
         activeVibrator = null
+    }
+}
+
+/**
+ * WhatsApp-style outgoing ringback tone player.
+ * Strictly ONLY started when the callee's device acknowledges the call (`status == "ringing"`).
+ * While the peer is offline (`status == "calling"`), no ringback tone plays.
+ */
+object CallRingbackPlayer {
+    private const val TAG = "CallRingbackPlayer"
+    private const val RING_BURST_MS = 1_200L
+    private const val RING_PAUSE_MS = 2_600L
+
+    private val lock = Any()
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var toneGenerator: ToneGenerator? = null
+    private var activeSessionId: String? = null
+    private var isRunning: Boolean = false
+
+    private val pulseRunnable = object : Runnable {
+        override fun run() {
+            synchronized(lock) {
+                if (!isRunning) return
+                runCatching {
+                    toneGenerator?.startTone(ToneGenerator.TONE_SUP_RINGTONE, RING_BURST_MS.toInt())
+                }.onFailure { err ->
+                    Log.w(TAG, "Ringback tone pulse failed: ${err.message}")
+                }
+                mainHandler.postDelayed(this, RING_BURST_MS + RING_PAUSE_MS)
+            }
+        }
+    }
+
+    fun startRingback(sessionId: String) {
+        synchronized(lock) {
+            if (isRunning && activeSessionId == sessionId) return
+            stopLocked()
+            activeSessionId = sessionId
+            isRunning = true
+            runCatching {
+                toneGenerator = ToneGenerator(AudioManager.STREAM_VOICE_CALL, 55)
+            }.onFailure { err ->
+                Log.w(TAG, "Unable to initialize ringback ToneGenerator: ${err.message}")
+                isRunning = false
+                activeSessionId = null
+                return
+            }
+            mainHandler.post(pulseRunnable)
+        }
+    }
+
+    fun stopRingback(sessionId: String? = null) {
+        synchronized(lock) {
+            if (sessionId != null && activeSessionId != null && activeSessionId != sessionId) {
+                return
+            }
+            stopLocked()
+        }
+    }
+
+    private fun stopLocked() {
+        isRunning = false
+        activeSessionId = null
+        mainHandler.removeCallbacks(pulseRunnable)
+        runCatching {
+            toneGenerator?.stopTone()
+            toneGenerator?.release()
+        }
+        toneGenerator = null
     }
 }
 

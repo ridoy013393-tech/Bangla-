@@ -39,9 +39,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.model.AppLanguage
 import com.example.model.ChatMessage
 import com.example.model.ChatWallpaper
 import com.example.model.PublicProfile
+import com.example.ui.components.PresenceStatusPill
 import com.example.ui.components.UserAvatar
 import com.example.ui.components.formatFullDate
 import com.example.ui.components.formatMessageTime
@@ -223,6 +225,8 @@ fun ChatPeerProfileSheet(
     peerPhoto: String,
     peerProfile: PublicProfile?,
     isPeerBlocked: Boolean,
+    language: AppLanguage,
+    nowMillis: Long,
     onBlockToggle: () -> Unit,
     onReport: () -> Unit,
     onDismiss: () -> Unit
@@ -240,7 +244,7 @@ fun ChatPeerProfileSheet(
                 photoUrl = peerPhoto,
                 size = 84.dp,
                 showOnlineIndicator = true,
-                isOnline = peerProfile?.showOnlineStatus == true && peerProfile.online
+                isOnline = peerProfile?.isVisiblyOnline(nowMillis) == true
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
@@ -253,6 +257,14 @@ fun ChatPeerProfileSheet(
                     text = "@${peerProfile?.username.orEmpty()}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = BrandBlue
+                )
+            }
+            if (peerProfile != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                PresenceStatusPill(
+                    profile = peerProfile,
+                    language = language,
+                    nowMillis = nowMillis
                 )
             }
             val visibleBio = peerProfile?.visibleAbout().orEmpty()

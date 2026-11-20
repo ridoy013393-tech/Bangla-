@@ -5,6 +5,12 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -32,6 +38,7 @@ import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.VideocamOff
 import androidx.compose.material.icons.rounded.VolumeOff
 import androidx.compose.material.icons.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.WifiOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +49,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -49,12 +57,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -62,12 +72,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.BanglaChatRepository
 import com.example.data.WebRtcCallManager
 import com.example.data.WebRtcConnectionState
+import com.example.model.AppLanguage
 import com.example.model.CallSession
 import com.example.model.PublicProfile
 import com.example.service.ActiveAppTracker
+import com.example.service.CallRingbackPlayer
 import com.example.service.CallRingtonePlayer
 import com.example.service.NotificationHelper
 import com.example.ui.components.UserAvatar
+import com.example.ui.components.formatLastSeenText
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.BrandBlue
 import com.example.ui.theme.BrandPurple
@@ -171,6 +184,7 @@ fun LiveCallScreen(
     request: ActiveCallRequest,
     myProfile: PublicProfile,
     repository: BanglaChatRepository,
+    language: AppLanguage = AppLanguage.BANGLA,
     onCallClosed: () -> Unit
 ) {
     val strings = LocalAppStrings.current
@@ -237,7 +251,28 @@ fun LiveCallScreen(
     var callConnected by remember { mutableStateOf(false) }
     var remoteDeclined by remember { mutableStateOf(false) }
     var callEnded by remember { mutableStateOf(false) }
+    var timedOutNoAnswer by remember { mutableStateOf(false) }
     var logSaved by remember { mutableStateOf(false) }
+    var remoteSessionStatus by remember {
+        mutableStateOf(
+            when (request) {
+                is ActiveCallRequest.Outgoing -> "calling"
+                is ActiveCallRequest.Incoming -> request.session.status.ifBlank { "ringing" }
+            }
+        )
+    }
+
+    val livePeerProfile by remember(remoteUid) {
+        repository.observePublicProfile(remoteUid)
+    }.collectAsStateWithLifecycle(initialValue = (request as? ActiveCallRequest.Outgoing)?.peer)
+
+    var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(15_000L)
+            nowMillis = System.currentTimeMillis()
+        }
+    }
 
     val pendingLocalCandidates = remember { mutableListOf<Triple<String, Int, String>>() }
     val seenRemoteCandidateIds = remember { mutableSetOf<String>() }
@@ -265,6 +300,7 @@ fun LiveCallScreen(
     fun finishAndClose(statusToWrite: String? = "ended") {
         if (callEnded) return
         callEnded = true
+        CallRingbackPlayer.stopRingback()
         val sid = activeSessionId
         val duration = callDurationSec.toLong()
         scope.launch {
@@ -317,10 +353,39 @@ fun LiveCallScreen(
         }
     }
 
+    // WhatsApp-style caller ringback tone: plays ONLY once callee's online device transitions session to "ringing"
+    LaunchedEffect(activeSessionId, remoteSessionStatus, callConnected, callEnded) {
+        val sid = activeSessionId
+        if (request is ActiveCallRequest.Outgoing &&
+            remoteSessionStatus == "ringing" &&
+            !callConnected &&
+            !callEnded &&
+            !sid.isNullOrBlank()
+        ) {
+            CallRingbackPlayer.startRingback(sid)
+        } else {
+            CallRingbackPlayer.stopRingback()
+        }
+    }
+
+    // Auto-timeout unanswered outgoing calls after 45 seconds (WhatsApp-style missed call)
+    LaunchedEffect(request, callConnected, callEnded) {
+        if (request is ActiveCallRequest.Outgoing && !callConnected && !callEnded) {
+            delay(45_000L)
+            if (!callConnected && !callEnded) {
+                timedOutNoAnswer = true
+                CallRingbackPlayer.stopRingback()
+                delay(1200L)
+                finishAndClose("missed")
+            }
+        }
+    }
+
     DisposableEffect(Unit) {
         onDispose {
             ActiveAppTracker.activeCallId = null
             CallRingtonePlayer.stopRinging()
+            CallRingbackPlayer.stopRingback()
             rtcManager.release()
         }
     }
@@ -366,17 +431,20 @@ fun LiveCallScreen(
         }
     }
 
-    // Observe remote call session updates (answer SDP, decline, end)
+    // Observe remote call session updates (calling -> ringing -> accepted / declined / end)
     LaunchedEffect(activeSessionId) {
         val sid = activeSessionId ?: return@LaunchedEffect
         repository.observeCallSession(sid).collect { session ->
             if (session == null) return@collect
+            remoteSessionStatus = session.status
             if (session.status == "accepted") {
                 callConnected = true
+                CallRingbackPlayer.stopRingback()
                 if (request is ActiveCallRequest.Outgoing && session.answerSdp.isNotBlank()) {
                     rtcManager.setRemoteAnswer(session.answerSdp)
                 }
             } else if (session.status in setOf("declined", "ended", "missed")) {
+                CallRingbackPlayer.stopRingback()
                 if (session.status == "declined") {
                     remoteDeclined = true
                 }
@@ -407,17 +475,51 @@ fun LiveCallScreen(
         }
     }
 
+    val isOutgoingRinging = request is ActiveCallRequest.Outgoing &&
+        remoteSessionStatus == "ringing" &&
+        !callConnected &&
+        !callEnded &&
+        !timedOutNoAnswer
+
+    val isPeerEffectivelyOnline = livePeerProfile?.isEffectivelyOnline(nowMillis) == true
+    val showOfflineNotice = request is ActiveCallRequest.Outgoing &&
+        !callConnected &&
+        !callEnded &&
+        !timedOutNoAnswer &&
+        remoteSessionStatus == "calling" &&
+        livePeerProfile != null &&
+        !isPeerEffectivelyOnline
+
     val statusSubtitle = when {
+        timedOutNoAnswer -> strings.callNoAnswerTimeout
         callEnded -> strings.callEndedStatus
         callConnected || connectionState == WebRtcConnectionState.CONNECTED -> {
             val mins = callDurationSec / 60
             val secs = callDurationSec % 60
             String.format("%02d:%02d", mins, secs)
         }
-        connectionState == WebRtcConnectionState.CONNECTING && request is ActiveCallRequest.Incoming ->
-            strings.connectingStatus
+        request is ActiveCallRequest.Incoming -> strings.connectingStatus
+        remoteSessionStatus == "ringing" -> strings.ringingStatus
         else -> strings.callingStatus
     }
+
+    val statusColor = when {
+        timedOutNoAnswer -> Color(0xFFFCA5A5)
+        callConnected || connectionState == WebRtcConnectionState.CONNECTED -> OnlineGreen
+        isOutgoingRinging -> Color(0xFF4ADE80)
+        else -> Color(0xFF93C5FD)
+    }
+
+    val pulseTransition = rememberInfiniteTransition(label = "ringing_pulse")
+    val pulseScale by pulseTransition.animateFloat(
+        initialValue = 1.0f,
+        targetValue = 1.18f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 950),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse_scale"
+    )
 
     Box(
         modifier = Modifier
@@ -448,15 +550,34 @@ fun LiveCallScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             if (!isVideoCall || remoteVideoTrack == null) {
-                Box(
-                    modifier = Modifier
-                        .size(124.dp)
-                        .clip(CircleShape)
-                        .border(3.dp, Brush.linearGradient(listOf(BrandBlue, BrandPurple)), CircleShape)
-                        .padding(6.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    UserAvatar(name = remoteName, photoUrl = remotePhoto, size = 112.dp)
+                Box(contentAlignment = Alignment.Center) {
+                    if (isOutgoingRinging) {
+                        Box(
+                            modifier = Modifier
+                                .size(134.dp)
+                                .scale(pulseScale)
+                                .clip(CircleShape)
+                                .background(OnlineGreen.copy(alpha = 0.22f))
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(124.dp)
+                            .clip(CircleShape)
+                            .border(
+                                width = 3.dp,
+                                brush = if (isOutgoingRinging) {
+                                    Brush.linearGradient(listOf(OnlineGreen, BrandBlue))
+                                } else {
+                                    Brush.linearGradient(listOf(BrandBlue, BrandPurple))
+                                },
+                                shape = CircleShape
+                            )
+                            .padding(6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        UserAvatar(name = remoteName, photoUrl = remotePhoto, size = 112.dp)
+                    }
                 }
                 Spacer(modifier = Modifier.height(18.dp))
             }
@@ -470,8 +591,51 @@ fun LiveCallScreen(
             Text(
                 text = statusSubtitle,
                 style = MaterialTheme.typography.titleMedium,
-                color = Color(0xFF93C5FD)
+                fontWeight = if (isOutgoingRinging) FontWeight.SemiBold else FontWeight.Normal,
+                color = statusColor,
+                modifier = Modifier.testTag("call_status_subtitle")
             )
+
+            AnimatedVisibility(visible = showOfflineNotice) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(top = 14.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color.White.copy(alpha = 0.12f),
+                        modifier = Modifier.testTag("call_peer_offline_pill")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.WifiOff,
+                                contentDescription = null,
+                                tint = Color(0xFFFDE68A),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = strings.callPeerOfflineNotice,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Color(0xFFFEF3C7),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                    val lastSeen = livePeerProfile?.takeIf { it.showLastSeen }?.lastSeen
+                    if (lastSeen != null) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = formatLastSeenText(lastSeen, language, nowMillis),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.68f)
+                        )
+                    }
+                }
+            }
         }
 
         // Local PiP video preview in bottom-right above controls

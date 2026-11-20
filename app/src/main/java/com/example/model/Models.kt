@@ -92,6 +92,24 @@ data class PublicProfile(
 ) {
     fun visiblePhotoUrl(): String = if (showProfilePhoto) photoUrl else ""
     fun visibleAbout(): String = if (showAbout) about else ""
+
+    /**
+     * WhatsApp-style stale-aware online check: a user is only considered effectively online
+     * if their `online` flag is true AND their last heartbeat (`lastSeen`) is recent (within 2 minutes).
+     * Prevents users whose internet dropped or app was force-closed from appearing stuck online.
+     */
+    fun isEffectivelyOnline(nowMillis: Long = System.currentTimeMillis()): Boolean {
+        if (!online) return false
+        val lastSeenMs = lastSeen?.toDate()?.time ?: return false
+        return (nowMillis - lastSeenMs) <= ONLINE_STALE_WINDOW_MS
+    }
+
+    fun isVisiblyOnline(nowMillis: Long = System.currentTimeMillis()): Boolean =
+        showOnlineStatus && isEffectivelyOnline(nowMillis)
+
+    companion object {
+        const val ONLINE_STALE_WINDOW_MS = 120_000L
+    }
 }
 
 @Keep
@@ -157,6 +175,8 @@ data class Chat(
     val lastMessageType: String = "text",
     val lastSenderId: String = "",
     @ServerTimestamp val lastMessageTime: Timestamp? = null,
+    val lastMessageDelivered: Boolean = false,
+    val lastMessageRead: Boolean = false,
     val unreadCounts: Map<String, Long> = emptyMap(),
     val typingUids: List<String> = emptyList(),
     val pinnedMessageId: String = "",
@@ -270,7 +290,7 @@ data class CallSession(
     val calleePhotoUrl: String = "",
     val participants: List<String> = emptyList(),
     val callType: String = "audio",
-    val status: String = "ringing",
+    val status: String = "calling",
     val offerSdp: String = "",
     val answerSdp: String = "",
     @ServerTimestamp val createdAt: Timestamp? = null,

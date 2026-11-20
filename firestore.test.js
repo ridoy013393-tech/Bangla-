@@ -790,3 +790,93 @@ test("In-chat call event messages & Delete-for-me (deletedFor) isolation", async
   );
 });
 
+test("WhatsApp-style calling->ringing handshake & chat-level delivery/read receipt updates", async () => {
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID).firestore();
+  const charlieDb = testEnv.authenticatedContext(CHARLIE_UID).firestore();
+  const now = pastDate(2000);
+
+  // 1. Caller creates call session in 'calling' state (offline/unreached until callee acknowledges)
+  const callId = "call_calling_handshake_1";
+  await assertSucceeds(
+    aliceDb.collection("callSessions").doc(callId).set({
+      callerUid: ALICE_UID,
+      callerName: "Alice",
+      callerPhotoUrl: "",
+      calleeUid: BOB_UID,
+      calleeName: "Bob",
+      calleePhotoUrl: "",
+      participants: [ALICE_UID, BOB_UID],
+      callType: "audio",
+      status: "calling",
+      offerSdp: "v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n",
+      createdAt: now,
+      updatedAt: now,
+    })
+  );
+
+  // Callee device receives it online and transitions status: 'calling' -> 'ringing'
+  await assertSucceeds(
+    bobDb.collection("callSessions").doc(callId).update({
+      status: "ringing",
+      updatedAt: pastDate(1500),
+    })
+  );
+
+  // Outsider Charlie still cannot update call status
+  await assertFails(
+    charlieDb.collection("callSessions").doc(callId).update({
+      status: "ringing",
+      updatedAt: pastDate(1400),
+    })
+  );
+
+  // 2. Chat-level lastMessageDelivered / lastMessageRead transitions
+  const chatId = `${ALICE_UID}_${BOB_UID}`;
+  await assertSucceeds(
+    aliceDb.collection("chats").doc(chatId).set({
+      participants: [ALICE_UID, BOB_UID],
+      participantNames: { [ALICE_UID]: "Alice", [BOB_UID]: "Bob" },
+      participantPhotos: { [ALICE_UID]: "", [BOB_UID]: "" },
+      lastMessage: "তুমি কি অনলাইনে আছো?",
+      lastMessageType: "text",
+      lastSenderId: ALICE_UID,
+      lastMessageTime: now,
+      lastMessageDelivered: false,
+      lastMessageRead: false,
+      unreadCounts: { [ALICE_UID]: 0, [BOB_UID]: 1 },
+      typingUids: [],
+      createdBy: ALICE_UID,
+      createdAt: now,
+      updatedAt: now,
+    })
+  );
+
+  // Bob acknowledges delivery in background without altering lastMessage text
+  await assertSucceeds(
+    bobDb.collection("chats").doc(chatId).update({
+      lastMessageDelivered: true,
+      updatedAt: pastDate(1200),
+    })
+  );
+
+  // Bob opens chat and marks read + resets unread count
+  await assertSucceeds(
+    bobDb.collection("chats").doc(chatId).update({
+      lastMessageDelivered: true,
+      lastMessageRead: true,
+      unreadCounts: { [ALICE_UID]: 0, [BOB_UID]: 0 },
+      updatedAt: pastDate(1000),
+    })
+  );
+
+  // Outsider Charlie cannot mark delivered/read
+  await assertFails(
+    charlieDb.collection("chats").doc(chatId).update({
+      lastMessageDelivered: true,
+      updatedAt: pastDate(900),
+    })
+  );
+});
+
+
