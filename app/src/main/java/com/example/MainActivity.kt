@@ -72,7 +72,9 @@ import com.example.service.NotificationHelper
 import com.example.ui.components.BanglaChatLogoMark
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.i18n.stringsForLanguage
+import com.example.ui.screens.AccountSuspendedScreen
 import com.example.ui.screens.ActiveCallRequest
+import com.example.ui.screens.AdminModerationScreen
 import com.example.ui.screens.AiAssistantScreen
 import com.example.ui.screens.AppLockScreen
 import com.example.ui.screens.AuthEntryMode
@@ -234,6 +236,27 @@ private fun BanglaChatAppRoot(
         var checkNonce by remember(user.uid) { mutableIntStateOf(0) }
         var registrationState by remember(user.uid) {
             mutableStateOf<AccountRegistrationState>(AccountRegistrationState.Checking)
+        }
+        val rootModerationFlow = remember(user.uid) {
+            app.chatRepository.observeMyModerationStatus(user.uid)
+        }
+        val rootModerationStatus by rootModerationFlow.collectAsStateWithLifecycle(initialValue = null)
+
+        if (rootModerationStatus?.isSuspended() == true) {
+            LaunchedEffect(user.uid) {
+                BanglaChatRealtimeService.stop(context)
+            }
+            AccountSuspendedScreen(
+                status = rootModerationStatus!!,
+                onLogout = {
+                    BanglaChatRealtimeService.stop(context)
+                    signOutUser(
+                        credentialManager = credentialManager,
+                        scope = scope
+                    )
+                }
+            )
+            return
         }
 
         LaunchedEffect(user.uid, checkNonce) {
@@ -427,6 +450,7 @@ private fun AuthenticatedBanglaChatHost(
 
     var activeChatId by rememberSaveable(currentUserId) { mutableStateOf<String?>(null) }
     var isAiAssistantOpen by rememberSaveable(currentUserId) { mutableStateOf(false) }
+    var isAdminPanelOpen by rememberSaveable(currentUserId) { mutableStateOf(false) }
 
     val aiAssistantViewModel: AiAssistantViewModel = viewModel(
         key = "ai_assistant_$currentUserId",
@@ -453,12 +477,17 @@ private fun AuthenticatedBanglaChatHost(
     LaunchedEffect(pendingDeepLinkChatId) {
         if (!pendingDeepLinkChatId.isNullOrBlank()) {
             isAiAssistantOpen = false
+            isAdminPanelOpen = false
             activeChatId = pendingDeepLinkChatId
             onConsumeDeepLink()
         }
     }
 
     val myProfile by mainViewModel.myProfile.collectAsStateWithLifecycle()
+    val myModerationStatus by mainViewModel.myModerationStatus.collectAsStateWithLifecycle()
+    val adminAllProfiles by mainViewModel.adminAllProfiles.collectAsStateWithLifecycle()
+    val adminAllModerations by mainViewModel.adminAllModerations.collectAsStateWithLifecycle()
+    val adminAllReports by mainViewModel.adminAllReports.collectAsStateWithLifecycle()
     val chatsState by mainViewModel.chatsState.collectAsStateWithLifecycle()
     val discoverableUsersState by mainViewModel.discoverableUsersState.collectAsStateWithLifecycle()
     val blockedUsers by mainViewModel.blockedUsers.collectAsStateWithLifecycle()
@@ -469,6 +498,24 @@ private fun AuthenticatedBanglaChatHost(
     val allChats = (chatsState as? UiState.Success)?.data.orEmpty()
     val discoverableContacts = (discoverableUsersState as? UiState.Success)?.data.orEmpty()
     val strings = LocalAppStrings.current
+
+    if (myModerationStatus?.isSuspended() == true) {
+        LaunchedEffect(currentUserId) {
+            BanglaChatRealtimeService.stop(context)
+        }
+        AccountSuspendedScreen(
+            status = myModerationStatus!!,
+            onLogout = {
+                BanglaChatRealtimeService.stop(context)
+                signOutUser(
+                    credentialManager = credentialManager,
+                    scope = scope,
+                    onBeforeSignOut = { mainViewModel.setOfflineBeforeSignOut() }
+                )
+            }
+        )
+        return
+    }
 
     // Auto-check GitHub releases version.json once per session
     LaunchedEffect(currentUserId, isNetworkOnline) {
@@ -561,6 +608,7 @@ private fun AuthenticatedBanglaChatHost(
                     allChats = allChats,
                     discoverableContacts = discoverableContacts,
                     blockedUids = blockedUids,
+                    myModerationStatus = myModerationStatus,
                     onBack = { activeChatId = null },
                     onStartVoiceCall = { peer ->
                         isCallMinimized = false
@@ -577,6 +625,30 @@ private fun AuthenticatedBanglaChatHost(
                     }
                 )
             }
+        } else if (isAdminPanelOpen && mainViewModel.isSuperAdmin) {
+            AdminModerationScreen(
+                currentAdminUid = currentUserId,
+                profiles = adminAllProfiles,
+                moderations = adminAllModerations,
+                reports = adminAllReports,
+                language = preferences.language,
+                onBanUser = { uid, name, username, reason ->
+                    mainViewModel.adminBanUser(uid, name, username, reason, strings.adminActionSuccessToast)
+                },
+                onMuteUser = { uid, name, username, hours, reason ->
+                    mainViewModel.adminMuteUser(uid, name, username, hours, reason, strings.adminActionSuccessToast)
+                },
+                onUnbanUser = { uid, name, username ->
+                    mainViewModel.adminUnbanUser(uid, name, username, strings.adminActionSuccessToast)
+                },
+                onDeleteUser = { uid, name, username, reason ->
+                    mainViewModel.adminDeleteUser(uid, name, username, reason, strings.adminActionSuccessToast)
+                },
+                onDismissReport = { reportId ->
+                    mainViewModel.adminDismissReport(reportId, strings.adminActionSuccessToast)
+                },
+                onBack = { isAdminPanelOpen = false }
+            )
         } else if (isAiAssistantOpen) {
             AiAssistantScreen(
                 viewModel = aiAssistantViewModel,
@@ -589,9 +661,15 @@ private fun AuthenticatedBanglaChatHost(
                 preferences = preferences,
                 onOpenChat = { chatId ->
                     isAiAssistantOpen = false
+                    isAdminPanelOpen = false
                     activeChatId = chatId
                 },
                 onOpenAiAssistant = { isAiAssistantOpen = true },
+                onOpenAdminPanel = {
+                    if (mainViewModel.isSuperAdmin) {
+                        isAdminPanelOpen = true
+                    }
+                },
                 onStartCall = { peer, callType ->
                     isCallMinimized = false
                     activeCallRequest = ActiveCallRequest.Outgoing(peer, callType)

@@ -141,6 +141,7 @@ import com.example.data.VoicePlaybackState
 import com.example.model.AppLanguage
 import com.example.model.Chat
 import com.example.model.ChatMessage
+import com.example.model.ModerationStatus
 import com.example.model.PublicProfile
 import com.example.model.UiState
 import com.example.model.UploadState
@@ -175,6 +176,7 @@ fun ChatScreen(
     allChats: List<Chat>,
     discoverableContacts: List<PublicProfile>,
     blockedUids: Set<String>,
+    myModerationStatus: ModerationStatus? = null,
     onBack: () -> Unit,
     onStartVoiceCall: (PublicProfile) -> Unit,
     onStartVideoCall: (PublicProfile) -> Unit,
@@ -910,7 +912,43 @@ fun ChatScreen(
                         chat?.onlyAdminsCanSend == true &&
                         chat?.isAdmin(viewModel.currentUserId) != true
 
-                    if (isPeerBlocked) {
+                    var muteNowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+                    LaunchedEffect(myModerationStatus?.mutedUntil) {
+                        while (myModerationStatus?.isMutedNow(muteNowMs) == true) {
+                            delay(15_000L)
+                            muteNowMs = System.currentTimeMillis()
+                        }
+                    }
+                    val isMutedByAdmin = myModerationStatus?.isMutedNow(muteNowMs) == true
+
+                    if (isMutedByAdmin) {
+                        val remainingLabel = formatRemainingMuteDuration(
+                            myModerationStatus!!.remainingMuteMillis(muteNowMs),
+                            preferences.language
+                        )
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(DangerRed.copy(alpha = 0.12f))
+                                .padding(horizontal = 16.dp, vertical = 14.dp)
+                                .testTag("admin_muted_composer_banner"),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = strings.mutedBannerTitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = DangerRed
+                            )
+                            Text(
+                                text = "${strings.mutedBannerRemainingPrefix}: $remainingLabel" +
+                                    myModerationStatus.reason.takeIf { it.isNotBlank() }?.let { " • $it" }.orEmpty(),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else if (isPeerBlocked) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()

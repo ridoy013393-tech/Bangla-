@@ -19,12 +19,14 @@ import com.example.model.Chat
 import com.example.model.ChatFontSize
 import com.example.model.ChatWallpaper
 import com.example.model.FavoriteContact
+import com.example.model.ModerationStatus
 import com.example.model.PrivateUser
 import com.example.model.PublicProfile
 import com.example.model.StatusStory
 import com.example.model.ThemePreference
 import com.example.model.UiState
 import com.example.model.UploadState
+import com.example.model.UserReport
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import com.google.firebase.messaging.FirebaseMessaging
@@ -37,6 +39,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -159,6 +162,30 @@ class MainViewModel(
             emit(emptyList())
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
+
+    val myModerationStatus: StateFlow<ModerationStatus?> =
+        repository.observeMyModerationStatus(currentUserId)
+            .catch { error ->
+                val root = extractFirestoreRootError(error)
+                if (root == null && error is CancellationException) throw error
+                emit(null)
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
+
+    val isSuperAdmin: Boolean
+        get() = repository.isCurrentUserSuperAdmin()
+
+    val adminAllProfiles: StateFlow<List<PublicProfile>> =
+        (if (isSuperAdmin) repository.observeAllProfilesForAdmin() else flowOf(emptyList()))
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
+
+    val adminAllModerations: StateFlow<List<ModerationStatus>> =
+        (if (isSuperAdmin) repository.observeAllModerationStatusesForAdmin() else flowOf(emptyList()))
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
+
+    val adminAllReports: StateFlow<List<UserReport>> =
+        (if (isSuperAdmin) repository.observeAllReportsForAdmin() else flowOf(emptyList()))
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
     private val _isPostingStatus = MutableStateFlow(false)
     val isPostingStatus: StateFlow<Boolean> = _isPostingStatus.asStateFlow()
@@ -609,6 +636,70 @@ class MainViewModel(
 
     suspend fun deleteUserFirestoreRecords(uid: String) {
         repository.deleteUserFirestoreData(uid)
+    }
+
+    fun adminBanUser(
+        targetUid: String,
+        targetName: String,
+        targetUsername: String,
+        reason: String,
+        successToast: String
+    ) {
+        viewModelScope.launch {
+            repository.adminSetBanStatus(targetUid, targetName, targetUsername, true, reason)
+                .onSuccess { _snackbarEvents.tryEmit(successToast) }
+                .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Ban failed") }
+        }
+    }
+
+    fun adminMuteUser(
+        targetUid: String,
+        targetName: String,
+        targetUsername: String,
+        durationHours: Long,
+        reason: String,
+        successToast: String
+    ) {
+        viewModelScope.launch {
+            repository.adminMuteUser(targetUid, targetName, targetUsername, durationHours, reason)
+                .onSuccess { _snackbarEvents.tryEmit(successToast) }
+                .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Mute failed") }
+        }
+    }
+
+    fun adminUnbanUser(
+        targetUid: String,
+        targetName: String,
+        targetUsername: String,
+        successToast: String
+    ) {
+        viewModelScope.launch {
+            repository.adminUnbanAndUnmute(targetUid, targetName, targetUsername)
+                .onSuccess { _snackbarEvents.tryEmit(successToast) }
+                .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Unban failed") }
+        }
+    }
+
+    fun adminDeleteUser(
+        targetUid: String,
+        targetName: String,
+        targetUsername: String,
+        reason: String,
+        successToast: String
+    ) {
+        viewModelScope.launch {
+            repository.adminDeleteUserAccount(targetUid, targetName, targetUsername, reason)
+                .onSuccess { _snackbarEvents.tryEmit(successToast) }
+                .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Delete user failed") }
+        }
+    }
+
+    fun adminDismissReport(reportId: String, successToast: String) {
+        viewModelScope.launch {
+            repository.adminDismissReport(reportId)
+                .onSuccess { _snackbarEvents.tryEmit(successToast) }
+                .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Dismiss report failed") }
+        }
     }
 
     private companion object {

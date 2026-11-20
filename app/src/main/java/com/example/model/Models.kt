@@ -325,3 +325,38 @@ data class IceCandidateRecord(
     val sdp: String = "",
     @ServerTimestamp val createdAt: Timestamp? = null
 )
+
+@Keep
+@IgnoreExtraProperties
+data class UserReport(
+    @DocumentId val id: String = "",
+    val reporterUid: String = "",
+    val reportedUid: String = "",
+    val reason: String = "",
+    val details: String = "",
+    @ServerTimestamp val createdAt: Timestamp? = null
+)
+
+@Keep
+@IgnoreExtraProperties
+data class ModerationStatus(
+    @DocumentId val id: String = "",
+    val uid: String = "",
+    val banned: Boolean = false,
+    val deletedByAdmin: Boolean = false,
+    val mutedUntil: Timestamp? = null,
+    val reason: String = "",
+    val updatedBy: String = "",
+    @ServerTimestamp val updatedAt: Timestamp? = null
+) {
+    fun isSuspended(): Boolean = banned || deletedByAdmin
+
+    fun remainingMuteMillis(nowMillis: Long = System.currentTimeMillis()): Long {
+        val until = mutedUntil?.toDate()?.time ?: return 0L
+        return (until - nowMillis).coerceAtLeast(0L)
+    }
+
+    fun isMutedNow(nowMillis: Long = System.currentTimeMillis()): Boolean =
+        !isSuspended() && remainingMuteMillis(nowMillis) > 0L
+}
+

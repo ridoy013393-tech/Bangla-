@@ -458,6 +458,36 @@ interface AppStrings {
     val updateDownloadNow: String
     val updateLater: String
     val appUpToDateToast: String
+    // v1.6 Admin Moderation & Telegram Control
+    val adminPanelTitle: String
+    val adminPanelSubtitle: String
+    val adminUsersTab: String
+    val adminReportsTab: String
+    val adminSearchHint: String
+    val adminStatusActive: String
+    val adminStatusBanned: String
+    val adminStatusMuted: String
+    val adminStatusDeleted: String
+    val adminBanAction: String
+    val adminUnbanAction: String
+    val adminMuteAction: String
+    val adminMute1h: String
+    val adminMute24h: String
+    val adminMute7d: String
+    val adminDeleteUserAction: String
+    val adminDismissReportAction: String
+    val adminReasonHint: String
+    val adminConfirmDeleteTitle: String
+    val adminConfirmDeleteDesc: String
+    val adminActionSuccessToast: String
+    val adminNoReportsEmpty: String
+    val adminCopyUidToast: String
+    val accountSuspendedTitle: String
+    val accountDeletedByAdminTitle: String
+    val accountSuspendedDesc: String
+    val moderationReasonLabel: String
+    val mutedBannerTitle: String
+    val mutedBannerRemainingPrefix: String
 }
 
 object BanglaStrings : AppStrings {
@@ -891,6 +921,35 @@ object BanglaStrings : AppStrings {
     override val updateDownloadNow = "এখনই ডাউনলোড করুন (APK)"
     override val updateLater = "পরে"
     override val appUpToDateToast = "আপনি সর্বশেষ ভার্সন ব্যবহার করছেন!"
+    override val adminPanelTitle = "অ্যাডমিন মডারেশন প্যানেল"
+    override val adminPanelSubtitle = "ইউজার ব্যান, মিউট, ডিলিট ও রিপোর্ট নিয়ন্ত্রণ (Telegram Sync)"
+    override val adminUsersTab = "সকল ইউজার"
+    override val adminReportsTab = "রিপোর্টসমূহ"
+    override val adminSearchHint = "নাম, @ইউজারনেম, ফোন বা UID খুঁজুন..."
+    override val adminStatusActive = "সক্রিয়"
+    override val adminStatusBanned = "ব্যান করা"
+    override val adminStatusMuted = "মিউট করা"
+    override val adminStatusDeleted = "রিমুভ করা"
+    override val adminBanAction = "স্থায়ী ব্যান"
+    override val adminUnbanAction = "আনব্যান / আনমিউট"
+    override val adminMuteAction = "মিউট করুন"
+    override val adminMute1h = "১ ঘণ্টা"
+    override val adminMute24h = "২৪ ঘণ্টা"
+    override val adminMute7d = "৭ দিন"
+    override val adminDeleteUserAction = "রিমুভ / ডিলিট"
+    override val adminDismissReportAction = "রিপোর্ট সমাধান"
+    override val adminReasonHint = "কারণ লিখুন (ঐচ্ছিক, যেমন: স্প্যাম / খারাপ আচরণ)..."
+    override val adminConfirmDeleteTitle = "ইউজার স্থায়ীভাবে রিমুভ করবেন?"
+    override val adminConfirmDeleteDesc = "ইউজারের প্রোফাইল ও ইউজারনেম মুছে যাবে এবং অ্যাকাউন্ট স্থায়ীভাবে ব্লক হয়ে যাবে।"
+    override val adminActionSuccessToast = "মডারেশন অ্যাকশন সম্পন্ন হয়েছে"
+    override val adminNoReportsEmpty = "বর্তমানে কোনো পেন্ডিং রিপোর্ট নেই"
+    override val adminCopyUidToast = "UID কপি করা হয়েছে"
+    override val accountSuspendedTitle = "আপনার অ্যাকাউন্ট স্থগিত করা হয়েছে"
+    override val accountDeletedByAdminTitle = "আপনার অ্যাকাউন্ট অ্যাডমিন দ্বারা রিমুভ করা হয়েছে"
+    override val accountSuspendedDesc = "অ্যাপের নীতিমালা লঙ্ঘনের কারণে আপনার অ্যাকাউন্টটি ব্লক বা বন্ধ করে দেওয়া হয়েছে। আপনি এই অ্যাকাউন্ট থেকে আর মেসেজ বা কল করতে পারবেন না।"
+    override val moderationReasonLabel = "কারণ"
+    override val mutedBannerTitle = "অ্যাডমিন আপনাকে সাময়িকভাবে মেসেজ পাঠানো থেকে বিরত রেখেছেন"
+    override val mutedBannerRemainingPrefix = "বাকি সময়"
 }
 
 object EnglishStrings : AppStrings {
@@ -1324,6 +1383,35 @@ object EnglishStrings : AppStrings {
     override val updateDownloadNow = "Download Now (APK)"
     override val updateLater = "Later"
     override val appUpToDateToast = "You are on the latest version!"
+    override val adminPanelTitle = "Admin Moderation Panel"
+    override val adminPanelSubtitle = "Ban, mute, delete users & review reports (Telegram Sync)"
+    override val adminUsersTab = "All Users"
+    override val adminReportsTab = "Reports"
+    override val adminSearchHint = "Search name, @username, phone, or UID..."
+    override val adminStatusActive = "Active"
+    override val adminStatusBanned = "Banned"
+    override val adminStatusMuted = "Muted"
+    override val adminStatusDeleted = "Removed"
+    override val adminBanAction = "Permanent Ban"
+    override val adminUnbanAction = "Unban / Unmute"
+    override val adminMuteAction = "Mute User"
+    override val adminMute1h = "1 Hour"
+    override val adminMute24h = "24 Hours"
+    override val adminMute7d = "7 Days"
+    override val adminDeleteUserAction = "Remove / Delete"
+    override val adminDismissReportAction = "Dismiss Report"
+    override val adminReasonHint = "Reason (optional, e.g., spam or abuse)..."
+    override val adminConfirmDeleteTitle = "Permanently remove this user?"
+    override val adminConfirmDeleteDesc = "This deletes their profile and username claim and permanently suspends their account."
+    override val adminActionSuccessToast = "Moderation action applied"
+    override val adminNoReportsEmpty = "No pending user reports right now"
+    override val adminCopyUidToast = "UID copied to clipboard"
+    override val accountSuspendedTitle = "Account Suspended"
+    override val accountDeletedByAdminTitle = "Account Removed by Admin"
+    override val accountSuspendedDesc = "Your account has been permanently suspended due to a policy violation. You can no longer send messages or place calls from this account."
+    override val moderationReasonLabel = "Reason"
+    override val mutedBannerTitle = "You are temporarily muted from sending messages"
+    override val mutedBannerRemainingPrefix = "Time remaining"
 }
 
 fun stringsForLanguage(language: AppLanguage): AppStrings =

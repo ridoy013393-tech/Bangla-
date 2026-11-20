@@ -9,9 +9,11 @@ import com.example.model.Chat
 import com.example.model.ChatMessage
 import com.example.model.FavoriteContact
 import com.example.model.IceCandidateRecord
+import com.example.model.ModerationStatus
 import com.example.model.PrivateUser
 import com.example.model.PublicProfile
 import com.example.model.StatusStory
+import com.example.model.UserReport
 import com.google.firebase.Firebase
 import java.util.UUID
 import com.google.firebase.Timestamp
@@ -47,6 +49,7 @@ class BanglaChatRepository(
         IllegalStateException("Username @$username is already taken")
 
     companion object {
+        const val SUPER_ADMIN_EMAIL = "mehedi0169019@gmail.com"
         private val USERNAME_REGEX = Regex("^[a-z0-9_]{3,30}$")
 
         fun normalizeUsername(raw: String): String =
@@ -54,6 +57,11 @@ class BanglaChatRepository(
 
         fun isValidUsernameFormat(raw: String): Boolean =
             USERNAME_REGEX.matches(normalizeUsername(raw))
+    }
+
+    fun isCurrentUserSuperAdmin(): Boolean {
+        val user = auth.currentUser ?: return false
+        return user.email.equals(SUPER_ADMIN_EMAIL, ignoreCase = true)
     }
 
     private fun sanitizeUsername(raw: String, uid: String): String {
@@ -208,6 +216,15 @@ class BanglaChatRepository(
                 }
                 null
             }.await()
+
+            // Notify Admin Telegram Bot of new registration (non-fatal)
+            TelegramNotifier.notifyNewUserRegistration(
+                uid = uid,
+                name = cleanName,
+                username = cleanUsername,
+                phone = cleanPhone,
+                email = firebaseUser.email.orEmpty()
+            )
 
             Result.success(Unit)
         } catch (e: CancellationException) {
@@ -1819,6 +1836,25 @@ class BanglaChatRepository(
                 "createdAt" to FieldValue.serverTimestamp()
             )
             db.collection("reports").document().set(payload).await()
+
+            // Forward abuse report to Admin Telegram Bot with reported user's phone/username/UID
+            runCatching {
+                val reportedProfile = db.collection("profiles").document(reportedUid).get().await()
+                    .toObject(PublicProfile::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+                val reporterProfile = db.collection("profiles").document(uid).get().await()
+                    .toObject(PublicProfile::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+                TelegramNotifier.notifyUserReported(
+                    reporterUid = uid,
+                    reporterName = reporterProfile?.name?.ifBlank { auth.currentUser?.displayName.orEmpty() }.orEmpty(),
+                    reportedUid = reportedUid,
+                    reportedName = reportedProfile?.name.orEmpty(),
+                    reportedUsername = reportedProfile?.username.orEmpty(),
+                    reportedPhone = reportedProfile?.phoneLookup.orEmpty(),
+                    reason = safeReason,
+                    details = details.trim().take(500)
+                )
+            }
+
             Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
@@ -2184,6 +2220,272 @@ class BanglaChatRepository(
             }
             profileRef.delete().await()
             db.collection("users").document(uid).delete().await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.DELETE, path)
+            Result.failure(e)
+        }
+    }
+
+    // --- ACCOUNT MODERATION & SUPER ADMIN CONTROLS ---
+
+    fun observeMyModerationStatus(uid: String): Flow<ModerationStatus?> {
+        val path = "moderation/$uid"
+        return db.collection("moderation").document(uid)
+            .snapshots()
+            .map { snap ->
+                if (!snap.exists()) null
+                else snap.toObject(
+                    ModerationStatus::class.java,
+                    DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+                )
+            }
+            .catch { error ->
+                val root = extractFirestoreRootError(error)
+                if (root == null && error is CancellationException) throw error
+                if (root != null && auth.currentUser?.uid == uid) {
+                    handleFirestoreError(root, OperationType.GET, path)
+                }
+                emit(null)
+            }
+    }
+
+    fun observeAllProfilesForAdmin(): Flow<List<PublicProfile>> {
+        val path = "profiles"
+        return db.collection("profiles")
+            .limit(200)
+            .snapshots()
+            .map { snap ->
+                snap.toObjects(
+                    PublicProfile::class.java,
+                    DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+                ).sortedByDescending { it.createdAt ?: Timestamp(0, 0) }
+            }
+            .catch { error ->
+                val root = extractFirestoreRootError(error)
+                if (root == null && error is CancellationException) throw error
+                if (root != null && isCurrentUserSuperAdmin()) {
+                    handleFirestoreError(root, OperationType.LIST, path)
+                }
+                emit(emptyList())
+            }
+    }
+
+    fun observeAllModerationStatusesForAdmin(): Flow<List<ModerationStatus>> {
+        val path = "moderation"
+        return db.collection("moderation")
+            .limit(200)
+            .snapshots()
+            .map { snap ->
+                snap.toObjects(
+                    ModerationStatus::class.java,
+                    DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+                )
+            }
+            .catch { error ->
+                val root = extractFirestoreRootError(error)
+                if (root == null && error is CancellationException) throw error
+                if (root != null && isCurrentUserSuperAdmin()) {
+                    handleFirestoreError(root, OperationType.LIST, path)
+                }
+                emit(emptyList())
+            }
+    }
+
+    fun observeAllReportsForAdmin(): Flow<List<UserReport>> {
+        val path = "reports"
+        return db.collection("reports")
+            .limit(150)
+            .snapshots()
+            .map { snap ->
+                snap.toObjects(
+                    UserReport::class.java,
+                    DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+                ).sortedByDescending { it.createdAt ?: Timestamp(0, 0) }
+            }
+            .catch { error ->
+                val root = extractFirestoreRootError(error)
+                if (root == null && error is CancellationException) throw error
+                if (root != null && isCurrentUserSuperAdmin()) {
+                    handleFirestoreError(root, OperationType.LIST, path)
+                }
+                emit(emptyList())
+            }
+    }
+
+    suspend fun adminSetBanStatus(
+        targetUid: String,
+        targetName: String,
+        targetUsername: String,
+        banned: Boolean,
+        reason: String
+    ): Result<Unit> {
+        val path = "moderation/$targetUid"
+        return try {
+            requireUserId()
+            check(isCurrentUserSuperAdmin()) { "Admin privileges required" }
+            val adminEmail = auth.currentUser?.email.orEmpty().ifBlank { SUPER_ADMIN_EMAIL }.take(120)
+            val safeReason = reason.trim().take(300)
+            val payload = mapOf(
+                "uid" to targetUid,
+                "banned" to banned,
+                "deletedByAdmin" to false,
+                "mutedUntil" to null,
+                "reason" to safeReason,
+                "updatedBy" to adminEmail,
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            db.collection("moderation").document(targetUid).set(payload).await()
+            TelegramNotifier.notifyModerationAction(
+                actionTitle = if (banned) "🚫 স্থায়ী ব্যান (Permanent Ban)" else "✅ আনব্যান (Unban)",
+                targetUid = targetUid,
+                targetName = targetName,
+                targetUsername = targetUsername,
+                reason = safeReason
+            )
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.WRITE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminMuteUser(
+        targetUid: String,
+        targetName: String,
+        targetUsername: String,
+        durationHours: Long,
+        reason: String
+    ): Result<Unit> {
+        val path = "moderation/$targetUid"
+        return try {
+            requireUserId()
+            check(isCurrentUserSuperAdmin()) { "Admin privileges required" }
+            val safeHours = durationHours.coerceIn(1L, 24L * 365L)
+            val adminEmail = auth.currentUser?.email.orEmpty().ifBlank { SUPER_ADMIN_EMAIL }.take(120)
+            val safeReason = reason.trim().take(300)
+            val untilTs = Timestamp(Date(System.currentTimeMillis() + safeHours * 3_600_000L))
+            val payload = mapOf(
+                "uid" to targetUid,
+                "banned" to false,
+                "deletedByAdmin" to false,
+                "mutedUntil" to untilTs,
+                "reason" to safeReason,
+                "updatedBy" to adminEmail,
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            db.collection("moderation").document(targetUid).set(payload).await()
+            TelegramNotifier.notifyModerationAction(
+                actionTitle = "🔇 মিউট করা হয়েছে ($safeHours ঘণ্টা)",
+                targetUid = targetUid,
+                targetName = targetName,
+                targetUsername = targetUsername,
+                reason = safeReason
+            )
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.WRITE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminUnbanAndUnmute(
+        targetUid: String,
+        targetName: String,
+        targetUsername: String
+    ): Result<Unit> {
+        val path = "moderation/$targetUid"
+        return try {
+            requireUserId()
+            check(isCurrentUserSuperAdmin()) { "Admin privileges required" }
+            val adminEmail = auth.currentUser?.email.orEmpty().ifBlank { SUPER_ADMIN_EMAIL }.take(120)
+            val payload = mapOf(
+                "uid" to targetUid,
+                "banned" to false,
+                "deletedByAdmin" to false,
+                "mutedUntil" to null,
+                "reason" to "",
+                "updatedBy" to adminEmail,
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            db.collection("moderation").document(targetUid).set(payload).await()
+            TelegramNotifier.notifyModerationAction(
+                actionTitle = "✅ সব নিষেধাজ্ঞা সরানো হয়েছে (Unban/Unmute)",
+                targetUid = targetUid,
+                targetName = targetName,
+                targetUsername = targetUsername,
+                reason = "Admin lifted restriction"
+            )
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.WRITE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminDeleteUserAccount(
+        targetUid: String,
+        targetName: String,
+        targetUsername: String,
+        reason: String
+    ): Result<Unit> {
+        val path = "moderation/$targetUid"
+        return try {
+            requireUserId()
+            check(isCurrentUserSuperAdmin()) { "Admin privileges required" }
+            val adminEmail = auth.currentUser?.email.orEmpty().ifBlank { SUPER_ADMIN_EMAIL }.take(120)
+            val safeReason = reason.trim().take(300).ifBlank { "Removed by Admin" }
+
+            // 1. Mark permanently deletedByAdmin + banned in /moderation/{uid}
+            val modPayload = mapOf(
+                "uid" to targetUid,
+                "banned" to true,
+                "deletedByAdmin" to true,
+                "mutedUntil" to null,
+                "reason" to safeReason,
+                "updatedBy" to adminEmail,
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            db.collection("moderation").document(targetUid).set(modPayload).await()
+
+            // 2. Remove public profile, username reservation, and private user record
+            val cleanUsername = normalizeUsername(targetUsername)
+            if (USERNAME_REGEX.matches(cleanUsername)) {
+                runCatching { db.collection("usernames").document(cleanUsername).delete().await() }
+            }
+            runCatching { db.collection("profiles").document(targetUid).delete().await() }
+            runCatching { db.collection("users").document(targetUid).delete().await() }
+
+            TelegramNotifier.notifyModerationAction(
+                actionTitle = "🗑️ অ্যাকাউন্ট স্থায়ীভাবে রিমুভ করা হয়েছে",
+                targetUid = targetUid,
+                targetName = targetName,
+                targetUsername = targetUsername,
+                reason = safeReason
+            )
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.DELETE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminDismissReport(reportId: String): Result<Unit> {
+        val path = "reports/$reportId"
+        return try {
+            requireUserId()
+            check(isCurrentUserSuperAdmin()) { "Admin privileges required" }
+            db.collection("reports").document(reportId).delete().await()
             Result.success(Unit)
         } catch (e: CancellationException) {
             throw e

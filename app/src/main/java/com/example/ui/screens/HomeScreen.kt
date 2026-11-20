@@ -103,6 +103,7 @@ fun HomeScreen(
     preferences: UserPreferences,
     onOpenChat: (String) -> Unit,
     onOpenAiAssistant: () -> Unit,
+    onOpenAdminPanel: () -> Unit = {},
     onStartCall: (PublicProfile, String) -> Unit,
     onLogout: () -> Unit,
     onDeleteAccount: () -> Unit
@@ -125,6 +126,7 @@ fun HomeScreen(
     val avatarUploadState by viewModel.avatarUploadState.collectAsStateWithLifecycle()
     val usernameSearchState by viewModel.usernameSearchState.collectAsStateWithLifecycle()
     val updateCheckResult by viewModel.updateCheckResult.collectAsStateWithLifecycle()
+    val adminReports by viewModel.adminAllReports.collectAsStateWithLifecycle()
 
     var selectedTab by rememberSaveable { mutableStateOf(HomeTab.CHATS) }
     var selectedChatFilter by rememberSaveable { mutableStateOf(ChatListFilter.ALL) }
@@ -537,6 +539,9 @@ fun HomeScreen(
                                     upToDateToast = strings.appUpToDateToast
                                 )
                             },
+                            isSuperAdmin = viewModel.isSuperAdmin,
+                            pendingReportsCount = adminReports.size,
+                            onOpenAdminPanel = onOpenAdminPanel,
                             onUnblockUser = { uid -> viewModel.unblockUser(uid) },
                             onLogout = onLogout,
                             onDeleteAccount = onDeleteAccount

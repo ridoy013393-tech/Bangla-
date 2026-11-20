@@ -32,6 +32,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.automirrored.rounded.Logout
+import androidx.compose.material.icons.rounded.AdminPanelSettings
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -134,6 +135,9 @@ fun SettingsTab(
     isCheckingUpdate: Boolean = false,
     onOpenMyQr: () -> Unit = {},
     onCheckForUpdates: () -> Unit = {},
+    isSuperAdmin: Boolean = false,
+    pendingReportsCount: Int = 0,
+    onOpenAdminPanel: () -> Unit = {},
     onUnblockUser: (String) -> Unit,
     onLogout: () -> Unit,
     onDeleteAccount: () -> Unit
@@ -259,6 +263,70 @@ fun SettingsTab(
                         ) {
                             Icon(Icons.Rounded.QrCode2, contentDescription = strings.myQrCodeAction, tint = BrandBlue)
                         }
+                    }
+                }
+            }
+        }
+
+        // Super Admin Moderation Panel Card (strictly visible only to Super Admin email)
+        if (isSuperAdmin) {
+            item(key = "super_admin_card") {
+                Card(
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = BrandPurple.copy(alpha = 0.12f)
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(20.dp))
+                        .clickable(onClick = onOpenAdminPanel)
+                        .testTag("open_admin_panel_card")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        SettingsLeadingBadge(
+                            icon = Icons.Rounded.AdminPanelSettings,
+                            tint = BrandPurple
+                        )
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = strings.adminPanelTitle,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = BrandPurple
+                                )
+                                if (pendingReportsCount > 0) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = DangerRed
+                                    ) {
+                                        Text(
+                                            text = pendingReportsCount.toString(),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = strings.adminPanelSubtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Rounded.ChevronRight,
+                            contentDescription = strings.adminPanelTitle,
+                            tint = BrandPurple
+                        )
                     }
                 }
             }

@@ -221,6 +221,71 @@ class ExampleUnitTest {
         assertTrue(opened.isViewedBy("bob"))
         assertFalse(opened.isViewedBy("alice"))
     }
+
+    @Test
+    fun moderationStatusChecksAndMuteCountdownWork() {
+        val nowMs = 1_750_000_000_000L
+        val futureMute = com.google.firebase.Timestamp((nowMs + 2 * 3_600_000L + 15 * 60_000L) / 1000L, 0)
+        val pastMute = com.google.firebase.Timestamp((nowMs - 60_000L) / 1000L, 0)
+
+        val muted = com.example.model.ModerationStatus(
+            uid = "u1",
+            banned = false,
+            deletedByAdmin = false,
+            mutedUntil = futureMute,
+            reason = "Spam"
+        )
+        assertFalse(muted.isSuspended())
+        assertTrue(muted.isMutedNow(nowMs))
+        assertEquals(
+            "2h 15m",
+            com.example.ui.screens.formatRemainingMuteDuration(muted.remainingMuteMillis(nowMs), AppLanguage.ENGLISH)
+        )
+        assertEquals(
+            "2 ঘণ্টা 15 মিনিট",
+            com.example.ui.screens.formatRemainingMuteDuration(muted.remainingMuteMillis(nowMs), AppLanguage.BANGLA)
+        )
+
+        val expiredMute = muted.copy(mutedUntil = pastMute)
+        assertFalse(expiredMute.isMutedNow(nowMs))
+        assertEquals(0L, expiredMute.remainingMuteMillis(nowMs))
+
+        val banned = muted.copy(banned = true)
+        assertTrue(banned.isSuspended())
+        assertFalse(banned.isMutedNow(nowMs))
+
+        val deleted = com.example.model.ModerationStatus(uid = "u2", deletedByAdmin = true)
+        assertTrue(deleted.isSuspended())
+    }
+
+    @Test
+    fun telegramNotifierFormattingAndConfigurationGuards() {
+        assertFalse(com.example.data.TelegramNotifier.isConfigured("YOUR_TELEGRAM_BOT_TOKEN_HERE", "123456"))
+        assertFalse(com.example.data.TelegramNotifier.isConfigured("12345:sample", "YOUR_TELEGRAM_ADMIN_CHAT_ID_HERE"))
+        assertFalse(com.example.data.TelegramNotifier.isConfigured("", ""))
+        assertTrue(com.example.data.TelegramNotifier.isConfigured("12345:sampleTokenValue", "1234567890"))
+
+        val escaped = com.example.data.TelegramNotifier.escapeHtml("A <script> & B")
+        assertEquals("A &lt;script&gt; &amp; B", escaped)
+
+        val regMsg = com.example.data.TelegramNotifier.formatNewUserMessage(
+            uid = "uid_999",
+            name = "Mehedi <Admin>",
+            username = "@ridoy123",
+            phone = "+8801712345678",
+            email = "test@example.com"
+        )
+        assertTrue(regMsg.contains("Mehedi &lt;Admin&gt;"))
+        assertTrue(regMsg.contains("@ridoy123"))
+        assertTrue(regMsg.contains("+8801712345678"))
+        assertTrue(regMsg.contains("uid_999"))
+
+        val markup = com.example.data.TelegramNotifier.buildModerationReplyMarkupJson("uid_999")
+        assertTrue(markup.contains("\"callback_data\":\"ban:uid_999\""))
+        assertTrue(markup.contains("\"callback_data\":\"m24:uid_999\""))
+        assertTrue(markup.contains("\"callback_data\":\"del:uid_999\""))
+    }
 }
+
 
 

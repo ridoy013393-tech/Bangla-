@@ -17,6 +17,27 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
+    function isSuperAdmin() {
+      return isSignedIn() &&
+             request.auth.token.get('email', '') == 'mehedi0169019@gmail.com' &&
+             request.auth.token.get('email_verified', false) == true;
+    }
+
+    function isModDocUnrestricted(data) {
+      return data.get('banned', false) != true &&
+             data.get('deletedByAdmin', false) != true &&
+             !(
+               'mutedUntil' in data &&
+               data.mutedUntil is timestamp &&
+               data.mutedUntil > request.time
+             );
+    }
+
+    function isNotModRestricted(uid) {
+      return !exists(/databases/$(database)/documents/moderation/$(uid)) ||
+             isModDocUnrestricted(get(/databases/$(database)/documents/moderation/$(uid)).data);
+    }
+
     function isValidId(id) {
       return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
@@ -313,11 +334,23 @@ service cloud.firestore {
              data.createdAt is timestamp && data.createdAt <= request.time;
     }
 
+    function isValidModerationStatus(data) {
+      return data.keys().hasAll(['uid', 'banned', 'deletedByAdmin', 'updatedAt']) &&
+             data.keys().hasOnly(['uid', 'banned', 'deletedByAdmin', 'mutedUntil', 'reason', 'updatedBy', 'updatedAt']) &&
+             data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+             data.banned is bool &&
+             data.deletedByAdmin is bool &&
+             (!('mutedUntil' in data) || data.mutedUntil == null || data.mutedUntil is timestamp) &&
+             (!('reason' in data) || data.reason == null || (data.reason is string && data.reason.size() <= 300)) &&
+             (!('updatedBy' in data) || data.updatedBy == null || (data.updatedBy is string && data.updatedBy.size() <= 120)) &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
     // --- PUBLIC PROFILES COLLECTION (NO PII) ---
 
     match /profiles/{uid} {
       allow get: if isSignedIn() && isValidId(uid);
-      allow list: if isSignedIn() && resource.data.discoverable == true;
+      allow list: if isSignedIn() && (resource.data.discoverable == true || isSuperAdmin());
 
       allow create: if isOwner(uid) &&
                        isValidId(uid) &&
@@ -338,7 +371,7 @@ service cloud.firestore {
                          incoming().diff(existing()).affectedKeys().hasOnly(['online', 'lastSeen', 'updatedAt'])
                        );
 
-      allow delete: if isOwner(uid) && isValidId(uid);
+      allow delete: if (isOwner(uid) || isSuperAdmin()) && isValidId(uid);
     }
 
     // --- UNIQUE @USERNAME REGISTRY ---
@@ -356,14 +389,14 @@ service cloud.firestore {
 
       allow delete: if isSignedIn() &&
                        isValidUsernameId(username) &&
-                       existing().uid == request.auth.uid;
+                       (existing().uid == request.auth.uid || isSuperAdmin());
     }
 
-    // --- PRIVATE USERS COLLECTION (STRICT OWNER-ONLY PII) ---
+    // --- PRIVATE USERS COLLECTION (STRICT OWNER-ONLY PII, SUPER ADMIN MODERATION AUDIT) ---
 
     match /users/{uid} {
-      allow get: if isOwner(uid) && isValidId(uid);
-      allow list: if false;
+      allow get: if (isOwner(uid) || isSuperAdmin()) && isValidId(uid);
+      allow list: if isSuperAdmin();
 
       allow create: if isOwner(uid) &&
                        isValidId(uid) &&
@@ -379,7 +412,7 @@ service cloud.firestore {
                          incoming().diff(existing()).affectedKeys().hasOnly(['fcmToken', 'updatedAt'])
                        );
 
-      allow delete: if isOwner(uid) && isValidId(uid);
+      allow delete: if (isOwner(uid) || isSuperAdmin()) && isValidId(uid);
 
       match /blockedUsers/{blockedUid} {
         allow get: if isOwner(uid) && isValidId(uid) && isValidId(blockedUid);
@@ -432,15 +465,31 @@ service cloud.firestore {
     // --- USER REPORTS COLLECTION ---
 
     match /reports/{reportId} {
-      allow get: if isSignedIn() && isValidId(reportId) && existing().reporterUid == request.auth.uid;
-      allow list: if isSignedIn() && resource.data.reporterUid == request.auth.uid;
+      allow get: if isSignedIn() && isValidId(reportId) && (existing().reporterUid == request.auth.uid || isSuperAdmin());
+      allow list: if isSignedIn() && (resource.data.reporterUid == request.auth.uid || isSuperAdmin());
       allow create: if isSignedIn() &&
                        isValidId(reportId) &&
                        incoming().reporterUid == request.auth.uid &&
                        incoming().reportedUid != request.auth.uid &&
                        isValidReport(incoming());
       allow update: if false;
-      allow delete: if false;
+      allow delete: if isSuperAdmin() && isValidId(reportId);
+    }
+
+    // --- SUPER ADMIN MODERATION COLLECTION (BAN / TIMED MUTE / REMOVAL) ---
+
+    match /moderation/{uid} {
+      allow get: if (isOwner(uid) || isSuperAdmin()) && isValidId(uid);
+      allow list: if isSuperAdmin();
+      allow create: if isSuperAdmin() &&
+                       isValidId(uid) &&
+                       incoming().uid == uid &&
+                       isValidModerationStatus(incoming());
+      allow update: if isSuperAdmin() &&
+                       isValidId(uid) &&
+                       incoming().uid == uid &&
+                       isValidModerationStatus(incoming());
+      allow delete: if isSuperAdmin() && isValidId(uid);
     }
 
     // --- 24-HOUR STATUS STORIES ---
@@ -451,6 +500,7 @@ service cloud.firestore {
 
       allow create: if isSignedIn() &&
                        isValidId(statusId) &&
+                       isNotModRestricted(request.auth.uid) &&
                        incoming().uid == request.auth.uid &&
                        incoming().expiresAt > request.time &&
                        isValidStatus(incoming());
@@ -466,7 +516,7 @@ service cloud.firestore {
 
       allow delete: if isSignedIn() &&
                        isValidId(statusId) &&
-                       existing().uid == request.auth.uid;
+                       (existing().uid == request.auth.uid || isSuperAdmin());
     }
 
     // --- REAL-TIME WEBRTC CALL SESSIONS ---
@@ -477,6 +527,7 @@ service cloud.firestore {
 
       allow create: if isSignedIn() &&
                        isValidId(callId) &&
+                       isNotModRestricted(request.auth.uid) &&
                        incoming().callerUid == request.auth.uid &&
                        incoming().status in ['calling', 'ringing'] &&
                        isValidCallSession(incoming()) &&
@@ -512,18 +563,21 @@ service cloud.firestore {
       }
     }
 
-    function isValidChatUpdateAction(changed) {
+    function isValidChatUpdateAction() {
+      let changed = incoming().diff(existing()).affectedKeys();
+      let isGroupChat = existing().get('isGroup', false) == true;
       return (incoming().participants == existing().participants && (
                // Action 1: Send/update last message metadata and unread counts
-               (!isDirectChatBlocked(existing()) &&
-                (!(existing().get('isGroup', false) == true && existing().get('onlyAdminsCanSend', false) == true) ||
-                 request.auth.uid in existing().get('adminUids', []) ||
-                 request.auth.uid == existing().createdBy) &&
-                changed.hasOnly([
+               (changed.hasOnly([
                   'lastMessage', 'lastMessageType', 'lastSenderId', 'lastMessageTime',
                   'lastMessageDelivered', 'lastMessageRead',
                   'unreadCounts', 'typingUids', 'participantNames', 'participantPhotos', 'updatedAt'
-                ])) ||
+                ]) &&
+                isNotModRestricted(request.auth.uid) &&
+                !isDirectChatBlocked(existing()) &&
+                (!(isGroupChat && existing().get('onlyAdminsCanSend', false) == true) ||
+                 request.auth.uid in existing().get('adminUids', []) ||
+                 request.auth.uid == existing().createdBy)) ||
                // Action 2: Reset own unread count or acknowledge last message delivered/read receipt
                changed.hasOnly(['unreadCounts', 'lastMessageDelivered', 'lastMessageRead', 'updatedAt']) ||
                // Action 3: Toggle typing indicator
@@ -536,7 +590,7 @@ service cloud.firestore {
                changed.hasOnly(['mutedBy', 'pinnedBy', 'archivedBy', 'updatedAt'])
              )) ||
              // Action 7: Group admin updates group name, photo, settings, or membership
-             (existing().get('isGroup', false) == true &&
+             (isGroupChat &&
               incoming().get('isGroup', false) == true &&
               (request.auth.uid in existing().get('adminUids', []) ||
                request.auth.uid == existing().createdBy) &&
@@ -546,14 +600,15 @@ service cloud.firestore {
                 'adminUids', 'onlyAdminsCanSend', 'updatedAt'
               ])) ||
              // Action 8: Group member leaves the group
-             (existing().get('isGroup', false) == true &&
+             (isGroupChat &&
               incoming().get('isGroup', false) == true &&
               !(request.auth.uid in incoming().participants) &&
               incoming().participants.size() == existing().participants.size() - 1 &&
               changed.hasOnly(['participants', 'adminUids', 'typingUids', 'updatedAt']));
     }
 
-    function isValidMessageUpdateAction(changed) {
+    function isValidMessageUpdateAction() {
+      let changed = incoming().diff(existing()).affectedKeys();
       return // Action 1: Recipient updates delivery/read receipt
              (request.auth.uid != existing().senderId &&
               changed.hasOnly(['delivered', 'read', 'updatedAt'])) ||
@@ -593,6 +648,15 @@ service cloud.firestore {
               incoming().pollVotes.diff(existing().get('pollVotes', {})).affectedKeys().hasOnly([request.auth.uid]));
     }
 
+    function canSendMessageInChat(chatData) {
+      return chatData.participants == incoming().participants &&
+             !isDirectChatBlocked(chatData) &&
+             (!(chatData.get('isGroup', false) == true &&
+                chatData.get('onlyAdminsCanSend', false) == true) ||
+              request.auth.uid in chatData.get('adminUids', []) ||
+              request.auth.uid == chatData.createdBy);
+    }
+
     // --- CHATS & REAL-TIME MESSAGES (1-on-1 & GROUPS) ---
 
     match /chats/{chatId} {
@@ -604,6 +668,7 @@ service cloud.firestore {
 
       allow create: if isSignedIn() &&
                        isValidId(chatId) &&
+                       isNotModRestricted(request.auth.uid) &&
                        incoming().createdBy == request.auth.uid &&
                        request.auth.uid in incoming().participants &&
                        incoming().participants.size() >= 2 &&
@@ -615,7 +680,7 @@ service cloud.firestore {
                        request.auth.uid in existing().participants &&
                        incoming().createdBy == existing().createdBy &&
                        incoming().createdAt == existing().createdAt &&
-                       isValidChatUpdateAction(incoming().diff(existing()).affectedKeys()) &&
+                       isValidChatUpdateAction() &&
                        isValidChat(incoming());
 
       allow delete: if false;
@@ -627,17 +692,13 @@ service cloud.firestore {
         allow create: if isSignedIn() &&
                          isValidId(chatId) &&
                          isValidId(messageId) &&
+                         isNotModRestricted(request.auth.uid) &&
                          incoming().chatId == chatId &&
                          incoming().senderId == request.auth.uid &&
                          request.auth.uid in incoming().participants &&
                          isValidMessage(incoming()) &&
                          exists(/databases/$(database)/documents/chats/$(chatId)) &&
-                         get(/databases/$(database)/documents/chats/$(chatId)).data.participants == incoming().participants &&
-                         !isDirectChatBlocked(get(/databases/$(database)/documents/chats/$(chatId)).data) &&
-                         (!(get(/databases/$(database)/documents/chats/$(chatId)).data.get('isGroup', false) == true &&
-                            get(/databases/$(database)/documents/chats/$(chatId)).data.get('onlyAdminsCanSend', false) == true) ||
-                          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.get('adminUids', []) ||
-                          request.auth.uid == get(/databases/$(database)/documents/chats/$(chatId)).data.createdBy);
+                         canSendMessageInChat(get(/databases/$(database)/documents/chats/$(chatId)).data);
 
         allow update: if isSignedIn() &&
                          isValidId(chatId) &&
@@ -648,7 +709,7 @@ service cloud.firestore {
                          incoming().participants == existing().participants &&
                          incoming().type == existing().type &&
                          incoming().timestamp == existing().timestamp &&
-                         isValidMessageUpdateAction(incoming().diff(existing()).affectedKeys()) &&
+                         isValidMessageUpdateAction() &&
                          isValidMessage(incoming());
 
         allow delete: if isSignedIn() &&

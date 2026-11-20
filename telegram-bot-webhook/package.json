@@ -1,0 +1,11 @@
+{
+  "name": "bangla-chat-telegram-moderation-bot",
+  "version": "1.6.0",
+  "description": "Free Vercel serverless Telegram Bot webhook for two-way Bangla Chat user moderation (Ban, Mute, Unban, Delete)",
+  "dependencies": {
+    "firebase-admin": "^12.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

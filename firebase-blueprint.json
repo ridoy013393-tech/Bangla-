@@ -240,6 +240,21 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["senderUid", "participants", "sdpMid", "sdpMLineIndex", "sdp", "createdAt"]
+    },
+    "ModerationStatus": {
+      "title": "ModerationStatus",
+      "description": "Super-admin controlled account moderation state enforcing permanent bans, timed messaging mutes, and admin account removals.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Target user Firebase Auth UID." },
+        "banned": { "type": "boolean", "description": "Whether the account is permanently banned from the app." },
+        "deletedByAdmin": { "type": "boolean", "description": "Whether the account was removed/deleted by an administrator." },
+        "mutedUntil": { "type": "string", "format": "date-time", "description": "Optional timestamp until which the user cannot send messages or place calls." },
+        "reason": { "type": "string", "description": "Optional admin-provided moderation reason shown to the user." },
+        "updatedBy": { "type": "string", "description": "Identifier of the admin or Telegram bot action that updated this status." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last moderation update server timestamp." }
+      },
+      "required": ["uid", "banned", "deletedByAdmin", "updatedAt"]
     }
   },
   "firestore": {
@@ -250,6 +265,7 @@
     "/users/{uid}/favorites/{favoriteUid}": { "schema": { "$ref": "#/entities/FavoriteContact" } },
     "/users/{uid}/callLogs/{callId}": { "schema": { "$ref": "#/entities/CallLog" } },
     "/reports/{reportId}": { "schema": { "$ref": "#/entities/UserReport" } },
+    "/moderation/{uid}": { "schema": { "$ref": "#/entities/ModerationStatus" } },
     "/chats/{chatId}": { "schema": { "$ref": "#/entities/Chat" } },
     "/chats/{chatId}/messages/{messageId}": { "schema": { "$ref": "#/entities/ChatMessage" } },
     "/statuses/{statusId}": { "schema": { "$ref": "#/entities/StatusStory" } },

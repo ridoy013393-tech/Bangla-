@@ -1061,5 +1061,141 @@ test("v1.5 features: Polls voting, View Once opened receipt, Group admin-only se
   );
 });
 
+test("v1.6 Super Admin moderation: ban/mute/delete enforcement and strict non-admin isolation", async () => {
+  const ADMIN_UID = "super_admin_uid_001";
+  const adminDb = testEnv.authenticatedContext(ADMIN_UID, {
+    email: "mehedi0169019@gmail.com",
+    email_verified: true,
+  }).firestore();
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID, {
+    email: "alice@example.com",
+    email_verified: true,
+  }).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID, {
+    email: "bob@example.com",
+    email_verified: true,
+  }).firestore();
+  const now = pastDate(3000);
+
+  // Setup profiles, users, and chat
+  await assertSucceeds(aliceDb.collection("profiles").doc(ALICE_UID).set(validProfile(ALICE_UID)));
+  await assertSucceeds(bobDb.collection("profiles").doc(BOB_UID).set(validProfile(BOB_UID)));
+  await assertSucceeds(aliceDb.collection("users").doc(ALICE_UID).set(validPrivateUser(ALICE_UID)));
+  await assertSucceeds(bobDb.collection("users").doc(BOB_UID).set(validPrivateUser(BOB_UID)));
+  await assertSucceeds(aliceDb.collection("chats").doc(CHAT_AB).set(validChat()));
+
+  // Non-admin cannot write moderation status or read someone else's moderation status
+  await assertFails(
+    aliceDb.collection("moderation").doc(BOB_UID).set({
+      uid: BOB_UID,
+      banned: true,
+      deletedByAdmin: false,
+      reason: "Unauthorized ban",
+      updatedAt: now,
+    })
+  );
+  await assertFails(aliceDb.collection("moderation").doc(BOB_UID).get());
+  await assertFails(aliceDb.collection("moderation").get());
+
+  // Non-admin cannot list all private users
+  await assertFails(aliceDb.collection("users").get());
+
+  // Super Admin CAN list profiles, users, and reports
+  await assertSucceeds(adminDb.collection("profiles").get());
+  await assertSucceeds(adminDb.collection("users").get());
+  await assertSucceeds(adminDb.collection("reports").get());
+
+  // Super Admin mutes Bob for 2 hours
+  const futureMute = new Date(Date.now() + 2 * 3600 * 1000);
+  await assertSucceeds(
+    adminDb.collection("moderation").doc(BOB_UID).set({
+      uid: BOB_UID,
+      banned: false,
+      deletedByAdmin: false,
+      mutedUntil: futureMute,
+      reason: "Spam warning",
+      updatedBy: "mehedi0169019@gmail.com",
+      updatedAt: pastDate(2000),
+    })
+  );
+
+  // Bob CAN read his own moderation doc (for UI countdown banner)
+  await assertSucceeds(bobDb.collection("moderation").doc(BOB_UID).get());
+  // Alice CANNOT read Bob's moderation doc
+  await assertFails(aliceDb.collection("moderation").doc(BOB_UID).get());
+
+  // Muted Bob is DENIED creating messages, chats, calls, and statuses
+  await assertFails(
+    bobDb.collection("chats").doc(CHAT_AB).collection("messages").doc("muted_msg").set(
+      validMessage({ senderId: BOB_UID, text: "I am muted" })
+    )
+  );
+  await assertFails(
+    bobDb.collection("statuses").doc("muted_status").set({
+      uid: BOB_UID,
+      authorName: "Bob",
+      type: "text",
+      text: "Status while muted",
+      viewerUids: [BOB_UID],
+      expiresAt: new Date(Date.now() + 3600 * 1000),
+      createdAt: pastDate(1000),
+    })
+  );
+
+  // Expired mute allows Bob to send messages again
+  await assertSucceeds(
+    adminDb.collection("moderation").doc(BOB_UID).set({
+      uid: BOB_UID,
+      banned: false,
+      deletedByAdmin: false,
+      mutedUntil: pastDate(60000),
+      reason: "",
+      updatedBy: "mehedi0169019@gmail.com",
+      updatedAt: pastDate(1500),
+    })
+  );
+  await assertSucceeds(
+    bobDb.collection("chats").doc(CHAT_AB).collection("messages").doc("unmuted_msg").set(
+      validMessage({ senderId: BOB_UID, text: "Mute expired!" })
+    )
+  );
+
+  // Super Admin permanently bans Bob -> Bob is DENIED sending messages & starting calls
+  await assertSucceeds(
+    adminDb.collection("moderation").doc(BOB_UID).set({
+      uid: BOB_UID,
+      banned: true,
+      deletedByAdmin: false,
+      mutedUntil: null,
+      reason: "Policy violation",
+      updatedBy: "telegram_bot",
+      updatedAt: pastDate(1000),
+    })
+  );
+  await assertFails(
+    bobDb.collection("chats").doc(CHAT_AB).collection("messages").doc("banned_msg").set(
+      validMessage({ senderId: BOB_UID, text: "Banned message" })
+    )
+  );
+  await assertFails(
+    bobDb.collection("callSessions").doc("banned_call").set({
+      callerUid: BOB_UID,
+      callerName: "Bob",
+      calleeUid: ALICE_UID,
+      calleeName: "Alice",
+      participants: [BOB_UID, ALICE_UID],
+      callType: "audio",
+      status: "calling",
+      createdAt: pastDate(500),
+      updatedAt: pastDate(500),
+    })
+  );
+
+  // Super Admin can delete a banned user's profile and private user doc
+  await assertSucceeds(adminDb.collection("profiles").doc(BOB_UID).delete());
+  await assertSucceeds(adminDb.collection("users").doc(BOB_UID).delete());
+});
+
+
 
 
