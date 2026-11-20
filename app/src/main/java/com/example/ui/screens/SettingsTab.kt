@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -40,6 +41,7 @@ import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Fingerprint
 import androidx.compose.material.icons.rounded.FormatSize
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Language
@@ -48,8 +50,10 @@ import androidx.compose.material.icons.rounded.MarkChatUnread
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PrivacyTip
+import androidx.compose.material.icons.rounded.QrCode2
 import androidx.compose.material.icons.rounded.ScreenshotMonitor
 import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material.icons.rounded.Wallpaper
 import androidx.compose.material3.AlertDialog
@@ -87,6 +91,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.example.BuildConfig
+import com.example.data.BiometricAuthHelper
 import com.example.model.AppLanguage
 import com.example.model.BlockedUser
 import com.example.model.ChatFontSize
@@ -125,6 +130,10 @@ fun SettingsTab(
     onToggleScreenSecurity: (Boolean) -> Unit,
     onEnableAppLock: (String) -> Unit,
     onDisableAppLock: () -> Unit,
+    onToggleBiometricLock: (Boolean) -> Unit = {},
+    isCheckingUpdate: Boolean = false,
+    onOpenMyQr: () -> Unit = {},
+    onCheckForUpdates: () -> Unit = {},
     onUnblockUser: (String) -> Unit,
     onLogout: () -> Unit,
     onDeleteAccount: () -> Unit
@@ -224,17 +233,32 @@ fun SettingsTab(
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
-                    OutlinedButton(
-                        onClick = { showEditProfileSheet = true },
-                        shape = RoundedCornerShape(20.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                            .testTag("edit_profile_button")
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(strings.editProfile)
+                        OutlinedButton(
+                            onClick = { showEditProfileSheet = true },
+                            shape = RoundedCornerShape(20.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                                .testTag("edit_profile_button")
+                        ) {
+                            Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(strings.editProfile, maxLines = 1)
+                        }
+                        OutlinedButton(
+                            onClick = onOpenMyQr,
+                            shape = RoundedCornerShape(20.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp),
+                            modifier = Modifier
+                                .height(48.dp)
+                                .testTag("settings_my_qr_button")
+                        ) {
+                            Icon(Icons.Rounded.QrCode2, contentDescription = strings.myQrCodeAction, tint = BrandBlue)
+                        }
                     }
                 }
             }
@@ -467,6 +491,38 @@ fun SettingsTab(
 
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
+                // Biometric (Fingerprint / Face) Unlock Toggle
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SettingsLeadingBadge(icon = Icons.Rounded.Fingerprint, tint = OnlineGreen)
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(strings.biometricLockSetting, style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            text = strings.biometricLockDesc,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = preferences.biometricLockEnabled,
+                        onCheckedChange = { enable ->
+                            if (enable && !BiometricAuthHelper.canUseBiometric(context)) {
+                                Toast.makeText(context, strings.biometricUnavailable, Toast.LENGTH_LONG).show()
+                            } else {
+                                onToggleBiometricLock(enable)
+                            }
+                        },
+                        modifier = Modifier.testTag("biometric_lock_switch")
+                    )
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
                 // Screenshot & Screen Recording Protection (FLAG_SECURE)
                 Row(
                     modifier = Modifier
@@ -569,6 +625,18 @@ fun SettingsTab(
                     title = strings.viewFullAppDetails,
                     testTag = "view_app_details_row",
                     onClick = { showAppDetailsSheet = true }
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                SettingsActionRow(
+                    icon = Icons.Rounded.SystemUpdate,
+                    tint = OnlineGreen,
+                    title = if (isCheckingUpdate) strings.checkingForUpdates else strings.checkForUpdatesAction,
+                    testTag = "check_updates_row",
+                    onClick = {
+                        if (!isCheckingUpdate) {
+                            onCheckForUpdates()
+                        }
+                    }
                 )
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                 SettingsActionRow(

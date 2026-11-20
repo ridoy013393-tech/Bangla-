@@ -20,9 +20,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Backspace
+import androidx.compose.material.icons.rounded.Fingerprint
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -30,6 +32,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -46,6 +50,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.BiometricAuthHelper
 import com.example.data.PreferencesRepository
 import com.example.ui.components.BanglaChatWordmark
 import com.example.ui.i18n.LocalAppStrings
@@ -56,11 +61,33 @@ import com.example.ui.theme.DangerRed
 @Composable
 fun AppLockScreen(
     expectedPinHash: String,
+    biometricEnabled: Boolean = false,
     onUnlocked: () -> Unit
 ) {
     val strings = LocalAppStrings.current
+    val context = LocalContext.current
+    val canBiometric = remember(context, biometricEnabled) {
+        biometricEnabled && BiometricAuthHelper.canUseBiometric(context)
+    }
     var enteredPin by remember { mutableStateOf("") }
     var showError by remember { mutableStateOf(false) }
+
+    fun triggerBiometric() {
+        val activity = BiometricAuthHelper.findFragmentActivity(context) ?: return
+        BiometricAuthHelper.authenticate(
+            activity = activity,
+            title = strings.biometricPromptTitle,
+            subtitle = strings.biometricPromptSubtitle,
+            negativeButtonText = strings.cancel,
+            onSuccess = onUnlocked
+        )
+    }
+
+    LaunchedEffect(canBiometric) {
+        if (canBiometric) {
+            triggerBiometric()
+        }
+    }
 
     fun onDigit(digit: String) {
         if (enteredPin.length >= 4) return
@@ -142,12 +169,12 @@ fun AppLockScreen(
                 }
             }
 
-            // Numeric Keypad
+                // Numeric Keypad
             val rows = listOf(
                 listOf("1", "2", "3"),
                 listOf("4", "5", "6"),
                 listOf("7", "8", "9"),
-                listOf("", "0", "DEL")
+                listOf(if (canBiometric) "BIO" else "", "0", "DEL")
             )
             Column(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -159,6 +186,26 @@ fun AppLockScreen(
                         row.forEach { key ->
                             when (key) {
                                 "" -> Spacer(modifier = Modifier.size(68.dp))
+                                "BIO" -> {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = BrandBlue.copy(alpha = 0.14f),
+                                        modifier = Modifier
+                                            .size(68.dp)
+                                            .clip(CircleShape)
+                                            .clickable { triggerBiometric() }
+                                            .testTag("pin_biometric_button")
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Fingerprint,
+                                                contentDescription = strings.unlockWithBiometric,
+                                                tint = BrandBlue,
+                                                modifier = Modifier.size(30.dp)
+                                            )
+                                        }
+                                    }
+                                }
                                 "DEL" -> {
                                     Box(
                                         modifier = Modifier
@@ -277,3 +324,118 @@ fun SetAppLockPinDialog(
         }
     )
 }
+
+@Composable
+fun UnlockChatDialog(
+    chatTitle: String,
+    expectedPinHash: String,
+    biometricEnabled: Boolean,
+    onUnlocked: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val strings = LocalAppStrings.current
+    val context = LocalContext.current
+    val canBiometric = remember(context, biometricEnabled) {
+        biometricEnabled && BiometricAuthHelper.canUseBiometric(context)
+    }
+    var pin by remember { mutableStateOf("") }
+    var wrongPin by remember { mutableStateOf(false) }
+
+    fun launchBiometric() {
+        val activity = BiometricAuthHelper.findFragmentActivity(context) ?: return
+        BiometricAuthHelper.authenticate(
+            activity = activity,
+            title = strings.unlockChatPromptTitle,
+            subtitle = chatTitle,
+            negativeButtonText = strings.cancel,
+            onSuccess = onUnlocked
+        )
+    }
+
+    LaunchedEffect(canBiometric) {
+        if (canBiometric) {
+            launchBiometric()
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Rounded.Lock,
+                contentDescription = null,
+                tint = BrandBlue
+            )
+        },
+        title = { Text("${strings.unlockChatPromptTitle} • $chatTitle") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (expectedPinHash.isNotBlank()) {
+                    OutlinedTextField(
+                        value = pin,
+                        onValueChange = {
+                            pin = it.filter(Char::isDigit).take(4)
+                            wrongPin = false
+                            if (pin.length == 4) {
+                                if (PreferencesRepository.verifyPin(pin, expectedPinHash)) {
+                                    onUnlocked()
+                                } else {
+                                    wrongPin = true
+                                    pin = ""
+                                }
+                            }
+                        },
+                        label = { Text(strings.appLockSubtitle) },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("unlock_chat_pin_input")
+                    )
+                    if (wrongPin) {
+                        Text(
+                            text = strings.appLockWrongPin,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = DangerRed
+                        )
+                    }
+                }
+                if (canBiometric) {
+                    FilledTonalButton(
+                        onClick = { launchBiometric() },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("unlock_chat_biometric_button")
+                    ) {
+                        Icon(Icons.Rounded.Fingerprint, contentDescription = null)
+                        Spacer(Modifier.size(8.dp))
+                        Text(strings.unlockWithBiometric)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (expectedPinHash.isNotBlank()) {
+                Button(
+                    onClick = {
+                        if (PreferencesRepository.verifyPin(pin, expectedPinHash)) {
+                            onUnlocked()
+                        } else {
+                            wrongPin = true
+                        }
+                    }
+                ) {
+                    Text(strings.confirm)
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(strings.cancel)
+            }
+        }
+    )
+}
+

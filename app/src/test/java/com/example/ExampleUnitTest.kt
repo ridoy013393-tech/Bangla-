@@ -148,5 +148,79 @@ class ExampleUnitTest {
             com.example.ui.components.formatLastSeenText(fiveMinAgoTs, AppLanguage.ENGLISH, nowMs)
         )
     }
+
+    @Test
+    fun appUpdateCheckerComparisonWorks() {
+        assertTrue(
+            com.example.data.AppUpdateChecker.isUpdateNewer(
+                currentCode = 6,
+                currentName = "1.5",
+                remoteCode = 7,
+                remoteName = "1.6"
+            )
+        )
+        assertFalse(
+            com.example.data.AppUpdateChecker.isUpdateNewer(
+                currentCode = 6,
+                currentName = "1.5",
+                remoteCode = 6,
+                remoteName = "1.5"
+            )
+        )
+        assertFalse(
+            com.example.data.AppUpdateChecker.isUpdateNewer(
+                currentCode = 7,
+                currentName = "1.6",
+                remoteCode = 6,
+                remoteName = "1.5"
+            )
+        )
+        assertTrue(
+            com.example.data.AppUpdateChecker.isUpdateNewer(
+                currentCode = 6,
+                currentName = "1.5",
+                remoteCode = 6,
+                remoteName = "1.5.1"
+            )
+        )
+    }
+
+    @Test
+    fun qrPayloadCodecRoundTripAndValidation() {
+        val payload = com.example.ui.screens.QrPayloadCodec.encodeUsername("@Ridoy_01")
+        assertEquals("banglachat://user/@ridoy_01", payload)
+        assertEquals("ridoy_01", com.example.ui.screens.QrPayloadCodec.extractUsername(payload))
+        assertEquals("hasan99", com.example.ui.screens.QrPayloadCodec.extractUsername("@Hasan99"))
+        assertEquals(null, com.example.ui.screens.QrPayloadCodec.extractUsername("https://example.com/random"))
+    }
+
+    @Test
+    fun voicePlaybackSpeedCyclingAndFormatting() {
+        assertEquals(1.5f, com.example.data.VoiceNotePlayer.nextPlaybackSpeed(1.0f))
+        assertEquals(2.0f, com.example.data.VoiceNotePlayer.nextPlaybackSpeed(1.5f))
+        assertEquals(1.0f, com.example.data.VoiceNotePlayer.nextPlaybackSpeed(2.0f))
+        assertEquals("1x", com.example.data.VoiceNotePlayer.formatSpeedLabel(1.0f))
+        assertEquals("1.5x", com.example.data.VoiceNotePlayer.formatSpeedLabel(1.5f))
+        assertEquals("2x", com.example.data.VoiceNotePlayer.formatSpeedLabel(2.0f))
+    }
+
+    @Test
+    fun viewOnceOpenedTracking() {
+        val unopened = com.example.model.ChatMessage(
+            id = "vo1",
+            senderId = "alice",
+            type = "image",
+            viewOnce = true,
+            viewedBy = emptyList()
+        )
+        assertFalse(unopened.isOpenedByRecipient())
+        assertFalse(unopened.isViewedBy("bob"))
+
+        val opened = unopened.copy(viewedBy = listOf("bob"))
+        assertTrue(opened.isOpenedByRecipient())
+        assertTrue(opened.isViewedBy("bob"))
+        assertFalse(opened.isViewedBy("alice"))
+    }
 }
+
 

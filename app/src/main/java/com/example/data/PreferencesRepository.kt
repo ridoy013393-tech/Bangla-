@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.model.AppLanguage
 import com.example.model.ChatFontSize
@@ -35,6 +36,8 @@ class PreferencesRepository(context: Context) {
         val SCREEN_SECURITY = booleanPreferencesKey("screen_security_enabled")
         val APP_LOCK_ENABLED = booleanPreferencesKey("app_lock_enabled")
         val APP_LOCK_PIN_HASH = stringPreferencesKey("app_lock_pin_hash")
+        val BIOMETRIC_LOCK_ENABLED = booleanPreferencesKey("biometric_lock_enabled")
+        val LOCKED_CHAT_IDS = stringSetPreferencesKey("locked_chat_ids")
     }
 
     val preferencesFlow: Flow<UserPreferences> = dataStore.data
@@ -69,7 +72,9 @@ class PreferencesRepository(context: Context) {
                 chatFontSize = fontSize,
                 screenSecurityEnabled = prefs[Keys.SCREEN_SECURITY] ?: false,
                 appLockEnabled = lockEnabled,
-                appLockPinHash = pinHash
+                appLockPinHash = pinHash,
+                biometricLockEnabled = prefs[Keys.BIOMETRIC_LOCK_ENABLED] ?: false,
+                lockedChatIds = prefs[Keys.LOCKED_CHAT_IDS] ?: emptySet()
             )
         }
 
@@ -109,6 +114,22 @@ class PreferencesRepository(context: Context) {
         dataStore.edit {
             it[Keys.APP_LOCK_ENABLED] = false
             it[Keys.APP_LOCK_PIN_HASH] = ""
+        }
+    }
+
+    suspend fun setBiometricLockEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.BIOMETRIC_LOCK_ENABLED] = enabled }
+    }
+
+    suspend fun toggleChatLocked(chatId: String) {
+        if (chatId.isBlank()) return
+        dataStore.edit { prefs ->
+            val current = prefs[Keys.LOCKED_CHAT_IDS] ?: emptySet()
+            prefs[Keys.LOCKED_CHAT_IDS] = if (chatId in current) {
+                current - chatId
+            } else {
+                current + chatId
+            }
         }
     }
 

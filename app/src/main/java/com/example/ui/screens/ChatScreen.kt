@@ -48,6 +48,7 @@ import androidx.compose.material.icons.automirrored.rounded.Forward
 import androidx.compose.material.icons.automirrored.rounded.Reply
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.AddCircle
+import androidx.compose.material.icons.rounded.AdminPanelSettings
 import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.AutoFixHigh
@@ -62,10 +63,12 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Done
 import androidx.compose.material.icons.rounded.DoneAll
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.Lightbulb
+import androidx.compose.material.icons.rounded.LooksOne
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.OpenInNew
@@ -73,6 +76,7 @@ import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Poll
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
@@ -231,6 +235,9 @@ fun ChatScreen(
     var showAiSummarySheet by remember { mutableStateOf(false) }
     var showAiWriterSheet by remember { mutableStateOf(false) }
     var showAiExplainSheet by remember { mutableStateOf(false) }
+    var showCreatePollDialog by remember { mutableStateOf(false) }
+    var showSharedMediaSheet by remember { mutableStateOf(false) }
+    var activeViewOnceMessage by remember { mutableStateOf<ChatMessage?>(null) }
     var inChatSearchOpen by remember { mutableStateOf(false) }
     var inChatSearchQuery by remember { mutableStateOf("") }
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
@@ -295,7 +302,16 @@ fun ChatScreen(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
-            viewModel.uploadAndSendMedia(effectiveMyProfile, uri, isImage = true)
+            viewModel.uploadAndSendMedia(effectiveMyProfile, uri, isImage = true, viewOnce = false)
+        }
+    }
+
+    // Zero-permission Photo Picker for View Once Photos
+    val viewOncePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.uploadAndSendMedia(effectiveMyProfile, uri, isImage = true, viewOnce = true)
         }
     }
 
@@ -545,6 +561,14 @@ fun ChatScreen(
                                     }
                                 )
                                 DropdownMenuItem(
+                                    text = { Text(strings.sharedMediaAction) },
+                                    leadingIcon = { Icon(Icons.Rounded.PhotoLibrary, contentDescription = null, tint = BrandBlue) },
+                                    onClick = {
+                                        showMenu = false
+                                        showSharedMediaSheet = true
+                                    }
+                                )
+                                DropdownMenuItem(
                                     text = { Text("${strings.starredMessagesTitle} (${starredMessages.size})") },
                                     leadingIcon = { Icon(Icons.Rounded.Star, contentDescription = null, tint = Color(0xFFF59E0B)) },
                                     onClick = {
@@ -558,6 +582,21 @@ fun ChatScreen(
                                     onClick = {
                                         showMenu = false
                                         showDisappearingDialog = true
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(strings.exportChatAction) },
+                                    leadingIcon = { Icon(Icons.Rounded.Download, contentDescription = null, tint = OnlineGreen) },
+                                    onClick = {
+                                        showMenu = false
+                                        exportChatToTxtAndShare(
+                                            context = context,
+                                            chatTitle = peerName,
+                                            messages = messages,
+                                            participantNames = chat?.participantNames.orEmpty(),
+                                            chooserTitle = strings.exportChatChooserTitle,
+                                            emptyMessage = strings.exportChatEmpty
+                                        )
                                     }
                                 )
                                 if (!isGroupChat && peerUid.isNotBlank()) {
@@ -867,6 +906,10 @@ fun ChatScreen(
                         }
                     }
 
+                    val isGroupRestrictedForMe = isGroupChat &&
+                        chat?.onlyAdminsCanSend == true &&
+                        chat?.isAdmin(viewModel.currentUserId) != true
+
                     if (isPeerBlocked) {
                         Box(
                             modifier = Modifier
@@ -879,6 +922,30 @@ fun ChatScreen(
                                 text = strings.blockedChatBanner,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = DangerRed
+                            )
+                        }
+                    } else if (isGroupRestrictedForMe) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(BrandPurple.copy(alpha = 0.12f))
+                                .padding(horizontal = 16.dp, vertical = 14.dp)
+                                .testTag("group_only_admins_banner"),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.AdminPanelSettings,
+                                contentDescription = null,
+                                tint = BrandPurple,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = strings.groupOnlyAdminsBanner,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium,
+                                color = BrandPurple
                             )
                         }
                     } else if (isRecording) {
@@ -1210,49 +1277,63 @@ fun ChatScreen(
                             val resolvedSenderName = if (isGroupChat && !isMe) {
                                 msg.senderName.ifBlank { chat?.participantNames?.get(msg.senderId).orEmpty() }
                             } else ""
-                            MessageBubbleItem(
-                                message = msg,
-                                isMe = isMe,
-                                language = preferences.language,
-                                groupSenderName = resolvedSenderName,
-                                isStarred = msg.isStarredFor(viewModel.currentUserId),
-                                isSearchMatch = msg.id in searchMatchIds,
-                                fontScale = preferences.chatFontSize.scale,
-                                translatedText = translatedMessages[msg.id],
-                                isTranslating = msg.id in translatingMessageIds,
-                                voicePlayback = voicePlayback,
-                                onToggleVoicePlay = {
-                                    voicePlayer.togglePlay(
-                                        messageId = msg.id,
-                                        url = msg.mediaUrl,
-                                        fallbackDurationSec = msg.audioDurationSec.toInt().coerceAtLeast(1),
-                                        scope = scope
-                                    )
-                                },
-                                onCallBackClick = { callType ->
-                                    if (!isGroupChat && peerUid.isNotBlank() && !isPeerBlocked) {
-                                        val targetPeer = peerProfile ?: PublicProfile(
-                                            uid = peerUid,
-                                            name = peerName,
-                                            photoUrl = peerPhoto
+                            val canSwipeReply = !msg.deleted &&
+                                msg.type != "call" &&
+                                !isPeerBlocked &&
+                                !(isGroupChat && chat?.onlyAdminsCanSend == true && chat?.isAdmin(viewModel.currentUserId) != true)
+
+                            SwipeToReplyContainer(
+                                enabled = canSwipeReply,
+                                onSwipeReply = { viewModel.setReplyTarget(msg) }
+                            ) {
+                                MessageBubbleItem(
+                                    message = msg,
+                                    currentUserId = viewModel.currentUserId,
+                                    isMe = isMe,
+                                    language = preferences.language,
+                                    groupSenderName = resolvedSenderName,
+                                    isStarred = msg.isStarredFor(viewModel.currentUserId),
+                                    isSearchMatch = msg.id in searchMatchIds,
+                                    fontScale = preferences.chatFontSize.scale,
+                                    translatedText = translatedMessages[msg.id],
+                                    isTranslating = msg.id in translatingMessageIds,
+                                    voicePlayback = voicePlayback,
+                                    onToggleVoicePlay = {
+                                        voicePlayer.togglePlay(
+                                            messageId = msg.id,
+                                            url = msg.mediaUrl,
+                                            fallbackDurationSec = msg.audioDurationSec.toInt().coerceAtLeast(1),
+                                            scope = scope
                                         )
-                                        if (callType == "video") onStartVideoCall(targetPeer)
-                                        else onStartVoiceCall(targetPeer)
-                                    }
-                                },
-                                onLongClick = { selectedMessage = msg },
-                                onImageClick = { url -> fullscreenImageUrl = url },
-                                onDocumentClick = { url ->
-                                    try {
-                                        val openIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                        context.startActivity(openIntent)
-                                    } catch (_: Exception) {
-                                        scope.launch {
-                                            snackbarHostState.showSnackbar("Unable to open attachment")
+                                    },
+                                    onCycleVoiceSpeed = { voicePlayer.cycleSpeed() },
+                                    onOpenViewOnce = { activeViewOnceMessage = msg },
+                                    onVotePoll = { optionIdx -> viewModel.voteOnPoll(msg, optionIdx) },
+                                    onCallBackClick = { callType ->
+                                        if (!isGroupChat && peerUid.isNotBlank() && !isPeerBlocked) {
+                                            val targetPeer = peerProfile ?: PublicProfile(
+                                                uid = peerUid,
+                                                name = peerName,
+                                                photoUrl = peerPhoto
+                                            )
+                                            if (callType == "video") onStartVideoCall(targetPeer)
+                                            else onStartVoiceCall(targetPeer)
+                                        }
+                                    },
+                                    onLongClick = { selectedMessage = msg },
+                                    onImageClick = { url -> fullscreenImageUrl = url },
+                                    onDocumentClick = { url ->
+                                        try {
+                                            val openIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                            context.startActivity(openIntent)
+                                        } catch (_: Exception) {
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar("Unable to open attachment")
+                                            }
                                         }
                                     }
-                                }
-                            )
+                                )
+                            }
                         }
                     }
                 }
@@ -1299,6 +1380,28 @@ fun ChatScreen(
                         } else {
                             cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                         }
+                    }
+                )
+                AttachOptionRow(
+                    icon = Icons.Rounded.LooksOne,
+                    tint = OnlineGreen,
+                    label = strings.viewOncePhotoAction,
+                    testTag = "attach_view_once_photo",
+                    onClick = {
+                        showAttachSheet = false
+                        viewOncePickerLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    }
+                )
+                AttachOptionRow(
+                    icon = Icons.Rounded.Poll,
+                    tint = BrandPurple,
+                    label = strings.createPollAction,
+                    testTag = "attach_create_poll",
+                    onClick = {
+                        showAttachSheet = false
+                        showCreatePollDialog = true
                     }
                 )
                 AttachOptionRow(
@@ -1678,6 +1781,7 @@ fun ChatScreen(
             isPeerBlocked = isPeerBlocked,
             language = preferences.language,
             nowMillis = nowMillis,
+            onOpenSharedMedia = { showSharedMediaSheet = true },
             onBlockToggle = {
                 if (peerUid.isNotBlank()) {
                     if (isPeerBlocked) onUnblockPeer(peerUid)
@@ -1697,8 +1801,51 @@ fun ChatScreen(
             discoverableContacts = discoverableContacts,
             onRenameGroup = { newName -> viewModel.renameGroup(newName) },
             onAddMembers = { newMembers -> viewModel.addGroupMembers(newMembers) },
+            onToggleOnlyAdminsCanSend = { onlyAdmins -> viewModel.toggleGroupOnlyAdminsCanSend(onlyAdmins) },
+            onToggleMemberAdmin = { targetUid ->
+                viewModel.toggleGroupMemberAdmin(targetUid, strings.groupMemberUpdatedToast)
+            },
+            onRemoveMember = { targetUid ->
+                viewModel.removeGroupMember(targetUid, strings.groupMemberUpdatedToast)
+            },
+            onOpenSharedMedia = { showSharedMediaSheet = true },
             onLeaveGroup = { viewModel.leaveGroup(onLeft = onBack) },
             onDismiss = { showGroupInfoSheet = false }
+        )
+    }
+
+    if (showCreatePollDialog) {
+        CreatePollDialog(
+            onDismiss = { showCreatePollDialog = false },
+            onCreatePoll = { question, options ->
+                viewModel.sendPollMessage(effectiveMyProfile, question, options)
+            }
+        )
+    }
+
+    if (showSharedMediaSheet) {
+        SharedMediaGallerySheet(
+            messages = messages,
+            onOpenImage = { url ->
+                showSharedMediaSheet = false
+                fullscreenImageUrl = url
+            },
+            onOpenUrl = { url ->
+                try {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                } catch (_: Exception) {
+                    scope.launch { snackbarHostState.showSnackbar("Unable to open link") }
+                }
+            },
+            onDismiss = { showSharedMediaSheet = false }
+        )
+    }
+
+    activeViewOnceMessage?.let { voMsg ->
+        ViewOncePhotoDialog(
+            message = voMsg,
+            onMarkOpened = { viewModel.markViewOnceOpened(voMsg) },
+            onDismiss = { activeViewOnceMessage = null }
         )
     }
 
@@ -1764,6 +1911,7 @@ fun ChatScreen(
 @Composable
 private fun MessageBubbleItem(
     message: ChatMessage,
+    currentUserId: String,
     isMe: Boolean,
     language: AppLanguage,
     groupSenderName: String,
@@ -1774,6 +1922,9 @@ private fun MessageBubbleItem(
     isTranslating: Boolean,
     voicePlayback: VoicePlaybackState,
     onToggleVoicePlay: () -> Unit,
+    onCycleVoiceSpeed: () -> Unit,
+    onOpenViewOnce: () -> Unit,
+    onVotePoll: (Int) -> Unit,
     onCallBackClick: (String) -> Unit,
     onLongClick: () -> Unit,
     onImageClick: (String) -> Unit,
@@ -1931,7 +2082,7 @@ private fun MessageBubbleItem(
                 )
                 .combinedClickable(
                     onClick = {
-                        if (!message.deleted && message.type == "image" && message.mediaUrl.isNotBlank()) {
+                        if (!message.deleted && message.type == "image" && !message.viewOnce && message.mediaUrl.isNotBlank()) {
                             onImageClick(message.mediaUrl)
                         } else if (!message.deleted && message.type == "document" && message.mediaUrl.isNotBlank()) {
                             onDocumentClick(message.mediaUrl)
@@ -2005,79 +2156,39 @@ private fun MessageBubbleItem(
                     }
 
                     message.type == "audio" && message.mediaUrl.isNotBlank() -> {
-                        val isThisActive = voicePlayback.activeMessageId == message.id
-                        val isPlaying = isThisActive && voicePlayback.isPlaying
-                        val isBuffering = isThisActive && voicePlayback.isBuffering
-                        val progress = if (isThisActive) voicePlayback.progress else 0f
-                        val shownSec = if (isThisActive && voicePlayback.currentSec > 0) {
-                            voicePlayback.currentSec
-                        } else {
-                            message.audioDurationSec.toInt().coerceAtLeast(1)
-                        }
+                        VoiceWaveformBubble(
+                            message = message,
+                            isMe = isMe,
+                            textColor = contentColor,
+                            metaColor = contentColor.copy(alpha = 0.8f),
+                            playbackState = voicePlayback,
+                            onTogglePlay = onToggleVoicePlay,
+                            onCycleSpeed = onCycleVoiceSpeed
+                        )
+                    }
 
-                        Row(
-                            modifier = Modifier
-                                .widthIn(min = 210.dp)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(
-                                    if (isMe) Color.White.copy(alpha = 0.16f)
-                                    else MaterialTheme.colorScheme.surface
-                                )
-                                .padding(horizontal = 10.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            IconButton(
-                                onClick = onToggleVoicePlay,
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isMe) Color.White else BrandBlue)
-                            ) {
-                                if (isBuffering) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(18.dp),
-                                        strokeWidth = 2.dp,
-                                        color = if (isMe) BrandBlue else Color.White
-                                    )
-                                } else {
-                                    Icon(
-                                        imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                        contentDescription = strings.voiceMessagePreview,
-                                        tint = if (isMe) BrandBlue else Color.White
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                LinearProgressIndicator(
-                                    progress = { progress },
-                                    color = if (isMe) Color.White else BrandBlue,
-                                    trackColor = contentColor.copy(alpha = 0.25f),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(5.dp)
-                                        .clip(RoundedCornerShape(3.dp))
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = String.format("%02d:%02d", shownSec / 60, shownSec % 60),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = contentColor.copy(alpha = 0.85f)
-                                    )
-                                    Icon(
-                                        imageVector = Icons.Rounded.Mic,
-                                        contentDescription = null,
-                                        tint = contentColor.copy(alpha = 0.75f),
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                }
-                            }
-                        }
+                    message.type == "image" && message.viewOnce -> {
+                        ViewOncePhotoBubble(
+                            message = message,
+                            isMe = isMe,
+                            currentUserId = currentUserId,
+                            textColor = contentColor,
+                            metaColor = contentColor.copy(alpha = 0.78f),
+                            strings = strings,
+                            onOpenViewOnce = onOpenViewOnce
+                        )
+                    }
+
+                    message.type == "poll" -> {
+                        PollMessageCard(
+                            message = message,
+                            currentUserId = currentUserId,
+                            isMe = isMe,
+                            textColor = contentColor,
+                            metaColor = contentColor.copy(alpha = 0.78f),
+                            strings = strings,
+                            onVote = onVotePoll
+                        )
                     }
 
                     message.type == "image" && message.mediaUrl.isNotBlank() -> {

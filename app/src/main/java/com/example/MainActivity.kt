@@ -3,15 +3,16 @@ package com.example
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,8 +20,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.SystemUpdate
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -52,6 +57,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.data.NetworkMonitor
 import com.example.data.StorageRepository
+import com.example.data.UpdateCheckResult
 import com.example.data.authStateFlow
 import com.example.data.configureAppCheck
 import com.example.data.deleteCurrentAccountWithReauth
@@ -89,7 +95,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
 
     private val deepLinkChatId = MutableStateFlow<String?>(null)
     private val deepLinkAcceptCallId = MutableStateFlow<String?>(null)
@@ -151,6 +157,7 @@ class MainActivity : ComponentActivity() {
                     if (preferences.appLockEnabled && !isUnlocked) {
                         AppLockScreen(
                             expectedPinHash = preferences.appLockPinHash,
+                            biometricEnabled = preferences.biometricLockEnabled,
                             onUnlocked = { isUnlocked = true }
                         )
                     } else {
@@ -457,10 +464,18 @@ private fun AuthenticatedBanglaChatHost(
     val blockedUsers by mainViewModel.blockedUsers.collectAsStateWithLifecycle()
     val incomingCalls by mainViewModel.incomingCalls.collectAsStateWithLifecycle()
     val isNetworkOnline by mainViewModel.isNetworkOnline.collectAsStateWithLifecycle()
+    val updateCheckResult by mainViewModel.updateCheckResult.collectAsStateWithLifecycle()
     val blockedUids = remember(blockedUsers) { blockedUsers.map { it.blockedUid }.toSet() }
     val allChats = (chatsState as? UiState.Success)?.data.orEmpty()
     val discoverableContacts = (discoverableUsersState as? UiState.Success)?.data.orEmpty()
     val strings = LocalAppStrings.current
+
+    // Auto-check GitHub releases version.json once per session
+    LaunchedEffect(currentUserId, isNetworkOnline) {
+        if (isNetworkOnline) {
+            mainViewModel.checkForAppUpdate(manual = false)
+        }
+    }
 
     // WhatsApp-style foreground presence heartbeat every 45s so stale/offline devices never appear stuck online
     LaunchedEffect(currentUserId, isNetworkOnline) {
@@ -480,15 +495,22 @@ private fun AuthenticatedBanglaChatHost(
         }
     }
 
-    // WhatsApp-style handshake: transition incoming "calling" -> "ringing" as soon as online device receives it
-    LaunchedEffect(incomingCalls) {
-        incomingCalls.filter { it.status == "calling" }.forEach { session ->
-            mainViewModel.acknowledgeIncomingCallRinging(session)
-        }
-    }
-
     val callRepository = remember(app) { app.chatRepository }
     var activeCallRequest by remember { mutableStateOf<ActiveCallRequest?>(null) }
+    var isCallMinimized by remember { mutableStateOf(false) }
+
+    // WhatsApp-style handshake: mark 'busy' if already in another call, otherwise transition 'calling' -> 'ringing'
+    LaunchedEffect(incomingCalls, activeCallRequest) {
+        val activeSid = (activeCallRequest as? ActiveCallRequest.Incoming)?.session?.id
+            ?: ActiveAppTracker.activeCallId
+        incomingCalls.forEach { session ->
+            if (activeCallRequest != null && session.id != activeSid) {
+                mainViewModel.markIncomingCallBusy(session)
+            } else if (session.status == "calling") {
+                mainViewModel.acknowledgeIncomingCallRinging(session)
+            }
+        }
+    }
 
     // Handle "Accept" button tapped directly on an incoming call notification
     LaunchedEffect(pendingAcceptCallId) {
@@ -499,6 +521,7 @@ private fun AuthenticatedBanglaChatHost(
             val liveSession = incomingCalls.firstOrNull { it.id == callId }
                 ?: callRepository.getCallSession(callId).getOrNull()
             if (liveSession != null && liveSession.status in setOf("calling", "ringing")) {
+                isCallMinimized = false
                 activeCallRequest = ActiveCallRequest.Incoming(liveSession)
             }
         }
@@ -509,18 +532,6 @@ private fun AuthenticatedBanglaChatHost(
         name = Firebase.auth.currentUser?.displayName ?: "Bangla Chat User",
         photoUrl = Firebase.auth.currentUser?.photoUrl?.toString().orEmpty()
     )
-
-    val currentCall = activeCallRequest
-    if (currentCall != null) {
-        LiveCallScreen(
-            request = currentCall,
-            myProfile = effectiveMyProfile,
-            repository = callRepository,
-            language = preferences.language,
-            onCallClosed = { activeCallRequest = null }
-        )
-        return
-    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         val openChatId = activeChatId
@@ -552,9 +563,11 @@ private fun AuthenticatedBanglaChatHost(
                     blockedUids = blockedUids,
                     onBack = { activeChatId = null },
                     onStartVoiceCall = { peer ->
+                        isCallMinimized = false
                         activeCallRequest = ActiveCallRequest.Outgoing(peer, "audio")
                     },
                     onStartVideoCall = { peer ->
+                        isCallMinimized = false
                         activeCallRequest = ActiveCallRequest.Outgoing(peer, "video")
                     },
                     onBlockPeer = { peer -> mainViewModel.blockUser(peer) },
@@ -580,6 +593,7 @@ private fun AuthenticatedBanglaChatHost(
                 },
                 onOpenAiAssistant = { isAiAssistantOpen = true },
                 onStartCall = { peer, callType ->
+                    isCallMinimized = false
                     activeCallRequest = ActiveCallRequest.Outgoing(peer, callType)
                 },
                 onLogout = {
@@ -603,20 +617,88 @@ private fun AuthenticatedBanglaChatHost(
             )
         }
 
-        incomingCalls.firstOrNull()?.let { ringing ->
-            Box(modifier = Modifier.align(Alignment.TopCenter)) {
-                IncomingCallBanner(
-                    session = ringing,
-                    onAccept = {
-                        NotificationHelper.cancelIncomingCallNotification(context, ringing.id)
-                        activeCallRequest = ActiveCallRequest.Incoming(ringing)
-                    },
-                    onDecline = {
-                        NotificationHelper.cancelIncomingCallNotification(context, ringing.id)
-                        mainViewModel.declineIncomingCall(ringing)
-                    }
-                )
+        // Keep LiveCallScreen mounted inside root Box so WebRTC stays live while minimized into floating pill
+        val currentCall = activeCallRequest
+        if (currentCall != null) {
+            LiveCallScreen(
+                request = currentCall,
+                myProfile = effectiveMyProfile,
+                repository = callRepository,
+                language = preferences.language,
+                isMinimized = isCallMinimized,
+                onToggleMinimize = { minimized -> isCallMinimized = minimized },
+                onCallClosed = {
+                    isCallMinimized = false
+                    activeCallRequest = null
+                }
+            )
+        } else {
+            incomingCalls.firstOrNull()?.let { ringing ->
+                Box(modifier = Modifier.align(Alignment.TopCenter)) {
+                    IncomingCallBanner(
+                        session = ringing,
+                        onAccept = {
+                            NotificationHelper.cancelIncomingCallNotification(context, ringing.id)
+                            isCallMinimized = false
+                            activeCallRequest = ActiveCallRequest.Incoming(ringing)
+                        },
+                        onDecline = {
+                            NotificationHelper.cancelIncomingCallNotification(context, ringing.id)
+                            mainViewModel.declineIncomingCall(ringing)
+                        }
+                    )
+                }
             }
+        }
+
+        // In-App Update Available Dialog (opens direct APK release link via system browser)
+        val updateAvailable = updateCheckResult as? UpdateCheckResult.UpdateAvailable
+        if (updateAvailable != null) {
+            val info = updateAvailable.info
+            AlertDialog(
+                onDismissRequest = { mainViewModel.dismissUpdateDialog() },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Rounded.SystemUpdate,
+                        contentDescription = null,
+                        tint = BrandBlue
+                    )
+                },
+                title = {
+                    Text("${strings.updateAvailableTitle} (v${info.latestVersionName})")
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(strings.updateAvailableDesc)
+                        if (info.releaseNotes.isNotBlank()) {
+                            Text(
+                                text = info.releaseNotes,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            mainViewModel.dismissUpdateDialog()
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(info.apkUrl))
+                                )
+                            }
+                        }
+                    ) {
+                        Text(strings.updateDownloadNow)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { mainViewModel.dismissUpdateDialog() }) {
+                        Text(strings.updateLater)
+                    }
+                }
+            )
         }
     }
 }

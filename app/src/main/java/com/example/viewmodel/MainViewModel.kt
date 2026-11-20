@@ -4,10 +4,12 @@ import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.AppUpdateChecker
 import com.example.data.BanglaChatRepository
 import com.example.data.NetworkMonitor
 import com.example.data.PreferencesRepository
 import com.example.data.StorageRepository
+import com.example.data.UpdateCheckResult
 import com.example.data.extractFirestoreRootError
 import com.example.model.AppLanguage
 import com.example.model.BlockedUser
@@ -64,6 +66,10 @@ class MainViewModel(
 
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
+    private val _updateCheckResult = MutableStateFlow<UpdateCheckResult>(UpdateCheckResult.Idle)
+    val updateCheckResult: StateFlow<UpdateCheckResult> = _updateCheckResult.asStateFlow()
+    private var autoUpdateChecked = false
 
     val isNetworkOnline: StateFlow<Boolean> = networkMonitor.observeOnline()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), true)
@@ -353,6 +359,13 @@ class MainViewModel(
         }
     }
 
+    fun markIncomingCallBusy(session: CallSession) {
+        if (session.calleeUid != currentUserId) return
+        viewModelScope.launch {
+            repository.updateCallSessionStatus(session.id, "busy")
+        }
+    }
+
     fun declineIncomingCall(session: CallSession) {
         viewModelScope.launch {
             repository.updateCallSessionStatus(session.id, "declined")
@@ -545,6 +558,49 @@ class MainViewModel(
             preferencesRepository.disableAppLock()
             _snackbarEvents.tryEmit(toastMessage)
         }
+    }
+
+    fun setBiometricLockEnabled(enabled: Boolean) {
+        viewModelScope.launch { preferencesRepository.setBiometricLockEnabled(enabled) }
+    }
+
+    fun toggleChatLocked(chatId: String, toastMessage: String) {
+        viewModelScope.launch {
+            preferencesRepository.toggleChatLocked(chatId)
+            _snackbarEvents.tryEmit(toastMessage)
+        }
+    }
+
+    fun checkForAppUpdate(manual: Boolean = false, upToDateToast: String = "") {
+        if (!manual && autoUpdateChecked) return
+        autoUpdateChecked = true
+        viewModelScope.launch {
+            if (manual) {
+                _updateCheckResult.value = UpdateCheckResult.Checking
+            }
+            when (val result = AppUpdateChecker.checkForUpdate()) {
+                is UpdateCheckResult.UpdateAvailable -> {
+                    _updateCheckResult.value = result
+                }
+                is UpdateCheckResult.UpToDate -> {
+                    _updateCheckResult.value = UpdateCheckResult.Idle
+                    if (manual && upToDateToast.isNotBlank()) {
+                        _snackbarEvents.tryEmit(upToDateToast)
+                    }
+                }
+                is UpdateCheckResult.Failed -> {
+                    _updateCheckResult.value = UpdateCheckResult.Idle
+                    if (manual) {
+                        _snackbarEvents.tryEmit(result.message)
+                    }
+                }
+                else -> _updateCheckResult.value = UpdateCheckResult.Idle
+            }
+        }
+    }
+
+    fun dismissUpdateDialog() {
+        _updateCheckResult.value = UpdateCheckResult.Idle
     }
 
     fun dismissOnlineBanner() {

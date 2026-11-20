@@ -23,6 +23,7 @@ import android.os.VibratorManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.app.RemoteInput
 import androidx.core.content.ContextCompat
 import com.example.MainActivity
 import com.example.R
@@ -361,7 +362,7 @@ object NotificationHelper {
         )
 
         val defaultSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-        val notification = NotificationCompat.Builder(
+        val builder = NotificationCompat.Builder(
             context,
             context.getString(R.string.notification_channel_messages_id)
         )
@@ -375,7 +376,40 @@ object NotificationHelper {
             .setVibrate(longArrayOf(0L, 220L, 120L, 220L))
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
-            .build()
+
+        // Direct Reply action right from the notification shade
+        if (chatId.isNotBlank()) {
+            val remoteInput = RemoteInput.Builder(CallActionReceiver.KEY_TEXT_REPLY)
+                .setLabel(context.getString(R.string.notification_reply_hint))
+                .build()
+            val replyIntent = Intent(context, CallActionReceiver::class.java).apply {
+                action = CallActionReceiver.ACTION_DIRECT_REPLY
+                putExtra(CallActionReceiver.EXTRA_CHAT_ID, chatId)
+                putExtra(CallActionReceiver.EXTRA_NOTIFICATION_ID, notificationId)
+            }
+            val replyFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+            val replyPendingIntent = PendingIntent.getBroadcast(
+                context,
+                notificationId xor 0x3F3F,
+                replyIntent,
+                replyFlags
+            )
+            val replyAction = NotificationCompat.Action.Builder(
+                android.R.drawable.ic_menu_send,
+                context.getString(R.string.notification_action_reply),
+                replyPendingIntent
+            )
+                .addRemoteInput(remoteInput)
+                .setAllowGeneratedReplies(true)
+                .build()
+            builder.addAction(replyAction)
+        }
+
+        val notification = builder.build()
 
         runCatching {
             NotificationManagerCompat.from(context).notify(notificationId, notification)

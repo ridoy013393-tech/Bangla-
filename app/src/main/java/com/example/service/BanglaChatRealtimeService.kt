@@ -183,6 +183,7 @@ class BanglaChatRealtimeService : Service() {
                             chat.lastMessageType == "image" -> "📷 ছবি পাঠানো হয়েছে"
                             chat.lastMessageType == "audio" -> "🎤 ভয়েস মেসেজ"
                             chat.lastMessageType == "document" -> "📎 ডকুমেন্ট পাঠানো হয়েছে"
+                            chat.lastMessageType == "poll" -> "📊 নতুন পোল"
                             else -> getString(R.string.notification_new_message_hidden)
                         }
                     } else {
@@ -230,8 +231,18 @@ class BanglaChatRealtimeService : Service() {
                     NotificationHelper.cancelIncomingCallNotification(applicationContext, endedId)
                 }
 
-                // Acknowledge delivery ('calling' -> 'ringing') so caller hears ringback, then ring callee phone
+                // Acknowledge delivery ('calling' -> 'ringing') or auto-mark 'busy' if already in another call
                 for (session in ringingSessions) {
+                    val currentActiveCall = ActiveAppTracker.activeCallId
+                    if (currentActiveCall != null && currentActiveCall != session.id) {
+                        db.collection("callSessions").document(session.id).update(
+                            mapOf(
+                                "status" to "busy",
+                                "updatedAt" to FieldValue.serverTimestamp()
+                            )
+                        )
+                        continue
+                    }
                     if (session.status == "calling") {
                         db.collection("callSessions").document(session.id).update(
                             mapOf(
@@ -240,7 +251,7 @@ class BanglaChatRealtimeService : Service() {
                             )
                         )
                     }
-                    if (ActiveAppTracker.activeCallId == session.id) continue
+                    if (currentActiveCall == session.id) continue
                     val isNewRing = activeRingingCallIds.add(session.id)
                     if (isNewRing) {
                         CallRingtonePlayer.startRinging(applicationContext, session.id)

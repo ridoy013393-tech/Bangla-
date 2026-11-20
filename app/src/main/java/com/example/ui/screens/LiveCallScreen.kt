@@ -28,12 +28,16 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.CallEnd
 import androidx.compose.material.icons.rounded.Cameraswitch
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MicOff
+import androidx.compose.material.icons.rounded.OpenInFull
+import androidx.compose.material.icons.rounded.PhonePaused
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.VideocamOff
 import androidx.compose.material.icons.rounded.VolumeOff
@@ -185,6 +189,8 @@ fun LiveCallScreen(
     myProfile: PublicProfile,
     repository: BanglaChatRepository,
     language: AppLanguage = AppLanguage.BANGLA,
+    isMinimized: Boolean = false,
+    onToggleMinimize: (Boolean) -> Unit = {},
     onCallClosed: () -> Unit
 ) {
     val strings = LocalAppStrings.current
@@ -250,6 +256,7 @@ fun LiveCallScreen(
     var callDurationSec by remember { mutableIntStateOf(0) }
     var callConnected by remember { mutableStateOf(false) }
     var remoteDeclined by remember { mutableStateOf(false) }
+    var remoteBusy by remember { mutableStateOf(false) }
     var callEnded by remember { mutableStateOf(false) }
     var timedOutNoAnswer by remember { mutableStateOf(false) }
     var logSaved by remember { mutableStateOf(false) }
@@ -325,6 +332,7 @@ fun LiveCallScreen(
                 if (request is ActiveCallRequest.Outgoing) {
                     val callStatus = when {
                         callConnected || duration > 0L -> "answered"
+                        remoteBusy -> "busy"
                         remoteDeclined -> "declined"
                         else -> "missed"
                     }
@@ -341,7 +349,9 @@ fun LiveCallScreen(
         }
     }
 
-    BackHandler { finishAndClose("ended") }
+    BackHandler(enabled = !isMinimized) {
+        onToggleMinimize(true)
+    }
 
     // Immediately silence incoming ringtone & clear incoming call notification once call screen opens
     LaunchedEffect(activeSessionId) {
@@ -443,6 +453,11 @@ fun LiveCallScreen(
                 if (request is ActiveCallRequest.Outgoing && session.answerSdp.isNotBlank()) {
                     rtcManager.setRemoteAnswer(session.answerSdp)
                 }
+            } else if (session.status == "busy") {
+                CallRingbackPlayer.stopRingback()
+                remoteBusy = true
+                delay(2400L)
+                finishAndClose(null)
             } else if (session.status in setOf("declined", "ended", "missed")) {
                 CallRingbackPlayer.stopRingback()
                 if (session.status == "declined") {
@@ -491,6 +506,7 @@ fun LiveCallScreen(
         !isPeerEffectivelyOnline
 
     val statusSubtitle = when {
+        remoteBusy -> strings.callBusyStatus
         timedOutNoAnswer -> strings.callNoAnswerTimeout
         callEnded -> strings.callEndedStatus
         callConnected || connectionState == WebRtcConnectionState.CONNECTED -> {
@@ -504,10 +520,110 @@ fun LiveCallScreen(
     }
 
     val statusColor = when {
+        remoteBusy -> Color(0xFFFBBF24)
         timedOutNoAnswer -> Color(0xFFFCA5A5)
         callConnected || connectionState == WebRtcConnectionState.CONNECTED -> OnlineGreen
         isOutgoingRinging -> Color(0xFF4ADE80)
         else -> Color(0xFF93C5FD)
+    }
+
+    // When minimized, render ONLY the sleek floating top pill while keeping WebRTC & signaling alive!
+    if (isMinimized) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = Color(0xFF0F172A).copy(alpha = 0.96f),
+                shadowElevation = 10.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp))
+                    .clickable { onToggleMinimize(false) }
+                    .testTag("minimized_floating_call_bar")
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(OnlineGreen)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    UserAvatar(name = remoteName, photoUrl = remotePhoto, size = 34.dp)
+                    Spacer(Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = remoteName,
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
+                        )
+                        Text(
+                            text = "$statusSubtitle • ${strings.returnToCallHint}",
+                            color = statusColor,
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1
+                        )
+                    }
+                    IconButton(
+                        onClick = { rtcManager.toggleMute() },
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(if (isMuted) Color.White else Color.White.copy(alpha = 0.16f))
+                            .testTag("minimized_call_mute_button")
+                    ) {
+                        Icon(
+                            imageVector = if (isMuted) Icons.Rounded.MicOff else Icons.Rounded.Mic,
+                            contentDescription = strings.muteMic,
+                            tint = if (isMuted) Color(0xFF0F172A) else Color.White,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    IconButton(
+                        onClick = { finishAndClose("ended") },
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(DangerRed)
+                            .testTag("minimized_call_end_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.CallEnd,
+                            contentDescription = strings.endCall,
+                            tint = Color.White,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    IconButton(
+                        onClick = { onToggleMinimize(false) },
+                        modifier = Modifier
+                            .size(34.dp)
+                            .testTag("minimized_call_expand_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.OpenInFull,
+                            contentDescription = strings.returnToCallHint,
+                            tint = Color.White.copy(alpha = 0.8f),
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+                }
+            }
+        }
+        return
     }
 
     val pulseTransition = rememberInfiniteTransition(label = "ringing_pulse")
@@ -538,6 +654,26 @@ fun LiveCallScreen(
                 eglBase = rtcManager.eglBase,
                 mirror = false,
                 modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        // Top-left minimize button so user can browse chats while call stays live
+        IconButton(
+            onClick = { onToggleMinimize(true) },
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .statusBarsPadding()
+                .padding(14.dp)
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.14f))
+                .testTag("minimize_call_button")
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.KeyboardArrowDown,
+                contentDescription = strings.minimizeCall,
+                tint = Color.White,
+                modifier = Modifier.size(26.dp)
             )
         }
 
@@ -596,7 +732,36 @@ fun LiveCallScreen(
                 modifier = Modifier.testTag("call_status_subtitle")
             )
 
-            AnimatedVisibility(visible = showOfflineNotice) {
+            AnimatedVisibility(visible = remoteBusy) {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color(0xFFF59E0B).copy(alpha = 0.22f),
+                    modifier = Modifier
+                        .padding(top = 14.dp)
+                        .testTag("call_peer_busy_pill")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.PhonePaused,
+                            contentDescription = null,
+                            tint = Color(0xFFFCD34D),
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = strings.callBusySubtitle,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color(0xFFFEF3C7),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+
+            AnimatedVisibility(visible = showOfflineNotice && !remoteBusy) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.padding(top = 14.dp)

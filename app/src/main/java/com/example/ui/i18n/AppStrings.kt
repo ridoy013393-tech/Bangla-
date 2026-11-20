@@ -391,6 +391,73 @@ interface AppStrings {
     val messageStatusSentOffline: String
     val messageStatusDelivered: String
     val messageStatusRead: String
+    // v1.5 Chat & Messaging: View Once, Polls, Shared Media, Export Chat
+    val viewOncePhotoAction: String
+    val viewOncePhotoLabel: String
+    val viewOnceOpenedLabel: String
+    val viewOnceViewerHint: String
+    val viewOncePreviewSubtitle: String
+    val createPollAction: String
+    val createPollTitle: String
+    val pollQuestionHint: String
+    val pollOptionHintPrefix: String
+    val pollAddOption: String
+    val pollSendAction: String
+    val pollPreviewPrefix: String
+    val pollVotesSuffix: String
+    val pollTapToVote: String
+    val sharedMediaAction: String
+    val sharedMediaTitle: String
+    val sharedMediaPhotosTab: String
+    val sharedMediaDocsTab: String
+    val sharedMediaLinksTab: String
+    val sharedMediaEmpty: String
+    val exportChatAction: String
+    val exportChatEmpty: String
+    val exportChatChooserTitle: String
+    // v1.5 Calling: Busy status & Minimized floating call bar
+    val callBusyStatus: String
+    val callBusySubtitle: String
+    val minimizeCall: String
+    val returnToCallHint: String
+    // v1.5 Privacy & Smart Connect: Biometric, Chat Lock, QR Code, Group Admin Controls
+    val biometricLockSetting: String
+    val biometricLockDesc: String
+    val biometricUnavailable: String
+    val unlockWithBiometric: String
+    val biometricPromptTitle: String
+    val biometricPromptSubtitle: String
+    val lockChatAction: String
+    val unlockChatAction: String
+    val lockedChatPreview: String
+    val chatLockedToast: String
+    val chatUnlockedToast: String
+    val unlockChatPromptTitle: String
+    val setPinOrBiometricFirst: String
+    val myQrCodeAction: String
+    val scanQrCodeAction: String
+    val qrSheetTitle: String
+    val qrMyCodeSubtitle: String
+    val qrShareMyLink: String
+    val qrScannerTitle: String
+    val qrScannerHint: String
+    val qrCameraPermissionRequired: String
+    val qrInvalidCode: String
+    val groupOnlyAdminsSendSetting: String
+    val groupOnlyAdminsSendDesc: String
+    val groupOnlyAdminsBanner: String
+    val groupMakeAdmin: String
+    val groupDismissAdmin: String
+    val groupRemoveMember: String
+    val groupMemberUpdatedToast: String
+    // v1.5 Auto-Update Checker
+    val checkForUpdatesAction: String
+    val checkingForUpdates: String
+    val updateAvailableTitle: String
+    val updateAvailableDesc: String
+    val updateDownloadNow: String
+    val updateLater: String
+    val appUpToDateToast: String
 }
 
 object BanglaStrings : AppStrings {
@@ -761,6 +828,69 @@ object BanglaStrings : AppStrings {
     override val messageStatusSentOffline = "পাঠানো হয়েছে (✓) — এখনো ফোনে পৌঁছায়নি (অফলাইন)"
     override val messageStatusDelivered = "পৌঁছেছে (✓✓) — ফোনে ডেলিভার্ড হয়েছে (অনলাইন)"
     override val messageStatusRead = "দেখা হয়েছে (✓✓ নীল) — মেসেজটি পড়েছে"
+    override val viewOncePhotoAction = "১ বার দেখার ছবি (View Once)"
+    override val viewOncePhotoLabel = "১ বার দেখার ছবি"
+    override val viewOnceOpenedLabel = "খোলা হয়েছে"
+    override val viewOnceViewerHint = "এই ছবিটি শুধুমাত্র একবার দেখা যাবে • স্ক্রিনশট সুরক্ষিত"
+    override val viewOncePreviewSubtitle = "ট্যাপ করে দেখুন"
+    override val createPollAction = "পোল / ভোটিং তৈরি করুন"
+    override val createPollTitle = "নতুন পোল তৈরি করুন"
+    override val pollQuestionHint = "প্রশ্ন লিখুন (যেমন: আজ কোথায় দেখা হবে?)..."
+    override val pollOptionHintPrefix = "অপশন"
+    override val pollAddOption = "আরও অপশন যোগ করুন"
+    override val pollSendAction = "পোল পাঠান"
+    override val pollPreviewPrefix = "পোল:"
+    override val pollVotesSuffix = "ভোট"
+    override val pollTapToVote = "ভোট দিতে যেকোনো অপশনে ট্যাপ করুন"
+    override val sharedMediaAction = "শেয়ার্ড মিডিয়া ও ফাইল"
+    override val sharedMediaTitle = "শেয়ার্ড মিডিয়া, ফাইল ও লিংক"
+    override val sharedMediaPhotosTab = "ছবি"
+    override val sharedMediaDocsTab = "ডকুমেন্ট"
+    override val sharedMediaLinksTab = "লিংক"
+    override val sharedMediaEmpty = "এখানে কোনো আইটেম পাওয়া যায়নি"
+    override val exportChatAction = "চ্যাট এক্সপোর্ট (.txt)"
+    override val exportChatEmpty = "এক্সপোর্ট করার মতো কোনো মেসেজ নেই"
+    override val exportChatChooserTitle = "চ্যাট ব্যাকআপ শেয়ার বা সেভ করুন"
+    override val callBusyStatus = "অন্য কলে ব্যস্ত আছেন"
+    override val callBusySubtitle = "এই মুহূর্তে তিনি অন্য একটি কলে কথা বলছেন"
+    override val minimizeCall = "ছোট করুন"
+    override val returnToCallHint = "কলে ফিরে যেতে ট্যাপ করুন"
+    override val biometricLockSetting = "ফিঙ্গারপ্রিন্ট / ফেস আনলক"
+    override val biometricLockDesc = "পিনের পাশাপাশি বায়োমেট্রিক দিয়ে দ্রুত আনলক করুন"
+    override val biometricUnavailable = "এই ফোনে ফিঙ্গারপ্রিন্ট বা ফেস আনলক সেটআপ করা নেই"
+    override val unlockWithBiometric = "ফিঙ্গারপ্রিন্ট দিয়ে আনলক করুন"
+    override val biometricPromptTitle = "Bangla Chat আনলক"
+    override val biometricPromptSubtitle = "আপনার ফিঙ্গারপ্রিন্ট বা ফেস দিয়ে পরিচয় নিশ্চিত করুন"
+    override val lockChatAction = "চ্যাট লক করুন"
+    override val unlockChatAction = "চ্যাট আনলক করুন"
+    override val lockedChatPreview = "লক করা চ্যাট • আনলক করে দেখুন"
+    override val chatLockedToast = "এই চ্যাটটি লক করা হয়েছে"
+    override val chatUnlockedToast = "চ্যাটটি আনলক করা হয়েছে"
+    override val unlockChatPromptTitle = "লক করা চ্যাট খুলুন"
+    override val setPinOrBiometricFirst = "চ্যাট লক ব্যবহার করতে সেটিংস থেকে অ্যাপ লক পিন বা বায়োমেট্রিক চালু করুন"
+    override val myQrCodeAction = "আমার QR কোড"
+    override val scanQrCodeAction = "QR স্ক্যান করুন"
+    override val qrSheetTitle = "QR কোড দিয়ে দ্রুত যুক্ত হন"
+    override val qrMyCodeSubtitle = "বন্ধুদের এই QR কোড স্ক্যান করতে বলুন — সরাসরি আপনার @username খুঁজে পাবে"
+    override val qrShareMyLink = "আমার প্রোফাইল লিংক শেয়ার"
+    override val qrScannerTitle = "বন্ধুর QR কোড স্ক্যান করুন"
+    override val qrScannerHint = "ক্যামেরার ফ্রেমের ভেতর Bangla Chat QR কোড ধরুন"
+    override val qrCameraPermissionRequired = "QR কোড স্ক্যান করতে ক্যামেরার অনুমতি প্রয়োজন"
+    override val qrInvalidCode = "এটি সঠিক Bangla Chat QR কোড নয়"
+    override val groupOnlyAdminsSendSetting = "শুধু অ্যাডমিন মেসেজ পাঠাতে পারবে"
+    override val groupOnlyAdminsSendDesc = "চালু করলে সাধারণ সদস্যরা শুধু মেসেজ পড়তে পারবে"
+    override val groupOnlyAdminsBanner = "এই গ্রুপে শুধুমাত্র অ্যাডমিনরা মেসেজ পাঠাতে পারবেন"
+    override val groupMakeAdmin = "অ্যাডমিন বানান"
+    override val groupDismissAdmin = "অ্যাডমিন থেকে সরান"
+    override val groupRemoveMember = "গ্রুপ থেকে রিমুভ করুন"
+    override val groupMemberUpdatedToast = "গ্রুপ সদস্য আপডেট হয়েছে"
+    override val checkForUpdatesAction = "নতুন আপডেট চেক করুন"
+    override val checkingForUpdates = "আপডেট যাচাই হচ্ছে..."
+    override val updateAvailableTitle = "নতুন আপডেট পাওয়া গেছে!"
+    override val updateAvailableDesc = "Bangla Chat-এর নতুন ভার্সন এখন ডাউনলোডের জন্য প্রস্তুত।"
+    override val updateDownloadNow = "এখনই ডাউনলোড করুন (APK)"
+    override val updateLater = "পরে"
+    override val appUpToDateToast = "আপনি সর্বশেষ ভার্সন ব্যবহার করছেন!"
 }
 
 object EnglishStrings : AppStrings {
@@ -1131,6 +1261,69 @@ object EnglishStrings : AppStrings {
     override val messageStatusSentOffline = "Sent (✓) — not delivered yet (offline)"
     override val messageStatusDelivered = "Delivered (✓✓) — reached recipient's phone"
     override val messageStatusRead = "Read (✓✓ blue) — seen by recipient"
+    override val viewOncePhotoAction = "View Once Photo"
+    override val viewOncePhotoLabel = "View Once Photo"
+    override val viewOnceOpenedLabel = "Opened"
+    override val viewOnceViewerHint = "Can only be viewed once • Screenshot protected"
+    override val viewOncePreviewSubtitle = "Tap to open"
+    override val createPollAction = "Create Poll"
+    override val createPollTitle = "Create a Poll"
+    override val pollQuestionHint = "Ask a question (e.g., Where should we meet?)..."
+    override val pollOptionHintPrefix = "Option"
+    override val pollAddOption = "Add option"
+    override val pollSendAction = "Send Poll"
+    override val pollPreviewPrefix = "Poll:"
+    override val pollVotesSuffix = "votes"
+    override val pollTapToVote = "Tap an option to vote"
+    override val sharedMediaAction = "Shared Media & Files"
+    override val sharedMediaTitle = "Shared Media, Docs & Links"
+    override val sharedMediaPhotosTab = "Photos"
+    override val sharedMediaDocsTab = "Docs"
+    override val sharedMediaLinksTab = "Links"
+    override val sharedMediaEmpty = "Nothing shared here yet"
+    override val exportChatAction = "Export Chat (.txt)"
+    override val exportChatEmpty = "No messages to export"
+    override val exportChatChooserTitle = "Share or save chat transcript"
+    override val callBusyStatus = "Busy on another call"
+    override val callBusySubtitle = "They are currently speaking on another call"
+    override val minimizeCall = "Minimize"
+    override val returnToCallHint = "Tap to return to call"
+    override val biometricLockSetting = "Fingerprint / Face Unlock"
+    override val biometricLockDesc = "Unlock Bangla Chat & locked chats quickly using biometrics"
+    override val biometricUnavailable = "Biometric unlock is not set up on this device"
+    override val unlockWithBiometric = "Unlock with Biometrics"
+    override val biometricPromptTitle = "Unlock Bangla Chat"
+    override val biometricPromptSubtitle = "Verify with your fingerprint or face"
+    override val lockChatAction = "Lock Chat"
+    override val unlockChatAction = "Unlock Chat"
+    override val lockedChatPreview = "Locked chat • Unlock to view"
+    override val chatLockedToast = "Chat locked"
+    override val chatUnlockedToast = "Chat unlocked"
+    override val unlockChatPromptTitle = "Unlock Chat"
+    override val setPinOrBiometricFirst = "Enable App Lock PIN or Biometric Unlock in Settings first"
+    override val myQrCodeAction = "My QR Code"
+    override val scanQrCodeAction = "Scan QR"
+    override val qrSheetTitle = "Connect Instantly via QR"
+    override val qrMyCodeSubtitle = "Let friends scan this code to find your @username instantly"
+    override val qrShareMyLink = "Share My Handle"
+    override val qrScannerTitle = "Scan Friend's QR Code"
+    override val qrScannerHint = "Align a Bangla Chat QR code inside the frame"
+    override val qrCameraPermissionRequired = "Camera permission is required to scan QR codes"
+    override val qrInvalidCode = "Not a valid Bangla Chat QR code"
+    override val groupOnlyAdminsSendSetting = "Only admins can send messages"
+    override val groupOnlyAdminsSendDesc = "When enabled, regular members can only read messages"
+    override val groupOnlyAdminsBanner = "Only group admins can send messages in this group"
+    override val groupMakeAdmin = "Make Group Admin"
+    override val groupDismissAdmin = "Dismiss as Admin"
+    override val groupRemoveMember = "Remove from Group"
+    override val groupMemberUpdatedToast = "Group membership updated"
+    override val checkForUpdatesAction = "Check for Updates"
+    override val checkingForUpdates = "Checking for updates..."
+    override val updateAvailableTitle = "New Update Available!"
+    override val updateAvailableDesc = "A newer version of Bangla Chat is ready to download."
+    override val updateDownloadNow = "Download Now (APK)"
+    override val updateLater = "Later"
+    override val appUpToDateToast = "You are on the latest version!"
 }
 
 fun stringsForLanguage(language: AppLanguage): AppStrings =

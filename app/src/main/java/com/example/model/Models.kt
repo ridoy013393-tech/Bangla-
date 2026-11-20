@@ -30,7 +30,9 @@ data class UserPreferences(
     val chatFontSize: ChatFontSize = ChatFontSize.MEDIUM,
     val screenSecurityEnabled: Boolean = false,
     val appLockEnabled: Boolean = false,
-    val appLockPinHash: String = ""
+    val appLockPinHash: String = "",
+    val biometricLockEnabled: Boolean = false,
+    val lockedChatIds: Set<String> = emptySet()
 )
 
 sealed interface UiState<out T> {
@@ -171,6 +173,7 @@ data class Chat(
     val groupName: String = "",
     val groupPhotoUrl: String = "",
     val adminUids: List<String> = emptyList(),
+    val onlyAdminsCanSend: Boolean = false,
     val lastMessage: String = "",
     val lastMessageType: String = "text",
     val lastSenderId: String = "",
@@ -232,6 +235,11 @@ data class ChatMessage(
     val callType: String = "",
     val callStatus: String = "",
     val callDurationSec: Long = 0L,
+    val viewOnce: Boolean = false,
+    val viewedBy: List<String> = emptyList(),
+    val pollQuestion: String = "",
+    val pollOptions: List<String> = emptyList(),
+    val pollVotes: Map<String, String> = emptyMap(),
     val delivered: Boolean = false,
     val read: Boolean = false,
     val deleted: Boolean = false,
@@ -250,6 +258,10 @@ data class ChatMessage(
     fun isStarredFor(uid: String): Boolean = uid in starredBy
 
     fun isDeletedFor(uid: String): Boolean = uid in deletedFor
+
+    fun isViewedBy(uid: String): Boolean = uid in viewedBy
+
+    fun isOpenedByRecipient(): Boolean = viewOnce && viewedBy.any { it != senderId }
 
     fun isExpiredNow(nowMillis: Long = System.currentTimeMillis()): Boolean {
         val exp = expiresAt ?: return false

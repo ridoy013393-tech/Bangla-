@@ -148,7 +148,7 @@ service cloud.firestore {
              ]) &&
              data.keys().hasOnly([
                'participants', 'participantNames', 'participantPhotos',
-               'isGroup', 'groupName', 'groupPhotoUrl', 'adminUids',
+               'isGroup', 'groupName', 'groupPhotoUrl', 'adminUids', 'onlyAdminsCanSend',
                'lastMessage', 'lastMessageType', 'lastSenderId', 'lastMessageTime',
                'lastMessageDelivered', 'lastMessageRead',
                'unreadCounts', 'typingUids',
@@ -163,11 +163,12 @@ service cloud.firestore {
              (!('groupName' in data) || data.groupName == null || (data.groupName is string && data.groupName.size() <= 80)) &&
              (!('groupPhotoUrl' in data) || data.groupPhotoUrl == null || (data.groupPhotoUrl is string && data.groupPhotoUrl.size() <= 500)) &&
              (!('adminUids' in data) || data.adminUids == null || isValidUidList(data.adminUids)) &&
+             (!('onlyAdminsCanSend' in data) || data.onlyAdminsCanSend == null || data.onlyAdminsCanSend is bool) &&
              (data.get('isGroup', false) == true || (data.participants.size() == 2 && data.participants[0] != data.participants[1])) &&
              data.participantNames is map && data.participantNames.size() <= 50 &&
              data.participantPhotos is map && data.participantPhotos.size() <= 50 &&
              data.lastMessage is string && data.lastMessage.size() <= 500 &&
-             data.lastMessageType in ['text', 'image', 'document', 'audio', 'call'] &&
+             data.lastMessageType in ['text', 'image', 'document', 'audio', 'call', 'poll'] &&
              data.lastSenderId is string && data.lastSenderId.size() <= 128 &&
              data.lastMessageTime is timestamp && data.lastMessageTime <= request.time &&
              (!('lastMessageDelivered' in data) || data.lastMessageDelivered == null || data.lastMessageDelivered is bool) &&
@@ -195,6 +196,8 @@ service cloud.firestore {
                'chatId', 'senderId', 'senderName', 'participants', 'text', 'type',
                'mediaUrl', 'mediaName', 'mediaSizeBytes', 'audioDurationSec',
                'callType', 'callStatus', 'callDurationSec',
+               'viewOnce', 'viewedBy',
+               'pollQuestion', 'pollOptions', 'pollVotes',
                'delivered', 'read', 'deleted', 'deletedFor', 'edited', 'forwarded',
                'replyToId', 'replyToText', 'replyToSenderName',
                'reactions', 'starredBy', 'expiresAt',
@@ -207,14 +210,19 @@ service cloud.firestore {
              data.participants.size() >= 1 && data.participants.size() <= 50 &&
              data.participants[0] is string &&
              data.text is string && data.text.size() <= 4000 &&
-             data.type in ['text', 'image', 'document', 'audio', 'call'] &&
+             data.type in ['text', 'image', 'document', 'audio', 'call', 'poll'] &&
              (!('mediaUrl' in data) || data.mediaUrl == null || (data.mediaUrl is string && data.mediaUrl.size() <= 1000)) &&
              (!('mediaName' in data) || data.mediaName == null || (data.mediaName is string && data.mediaName.size() <= 200)) &&
              (!('mediaSizeBytes' in data) || data.mediaSizeBytes == null || (data.mediaSizeBytes is int && data.mediaSizeBytes >= 0 && data.mediaSizeBytes <= 10485760)) &&
              (!('audioDurationSec' in data) || data.audioDurationSec == null || (data.audioDurationSec is int && data.audioDurationSec >= 0 && data.audioDurationSec <= 600)) &&
              (!('callType' in data) || data.callType == null || data.callType in ['audio', 'video']) &&
-             (!('callStatus' in data) || data.callStatus == null || data.callStatus in ['answered', 'missed', 'declined']) &&
+             (!('callStatus' in data) || data.callStatus == null || data.callStatus in ['answered', 'missed', 'declined', 'busy']) &&
              (!('callDurationSec' in data) || data.callDurationSec == null || (data.callDurationSec is int && data.callDurationSec >= 0 && data.callDurationSec <= 86400)) &&
+             (!('viewOnce' in data) || data.viewOnce == null || data.viewOnce is bool) &&
+             (!('viewedBy' in data) || data.viewedBy == null || isValidUidList(data.viewedBy)) &&
+             (!('pollQuestion' in data) || data.pollQuestion == null || (data.pollQuestion is string && data.pollQuestion.size() <= 240)) &&
+             (!('pollOptions' in data) || data.pollOptions == null || (data.pollOptions is list && data.pollOptions.size() <= 6)) &&
+             (!('pollVotes' in data) || data.pollVotes == null || (data.pollVotes is map && data.pollVotes.size() <= 100)) &&
              data.delivered is bool &&
              data.read is bool &&
              data.deleted is bool &&
@@ -272,7 +280,7 @@ service cloud.firestore {
              data.participants is list && data.participants.size() == 2 &&
              data.callerUid in data.participants && data.calleeUid in data.participants &&
              data.callType in ['audio', 'video'] &&
-             data.status in ['calling', 'ringing', 'accepted', 'declined', 'ended', 'missed'] &&
+             data.status in ['calling', 'ringing', 'accepted', 'declined', 'ended', 'missed', 'busy'] &&
              (!('offerSdp' in data) || data.offerSdp == null || (data.offerSdp is string && data.offerSdp.size() <= 25000)) &&
              (!('answerSdp' in data) || data.answerSdp == null || (data.answerSdp is string && data.answerSdp.size() <= 25000)) &&
              data.createdAt is timestamp && data.createdAt <= request.time &&
@@ -504,6 +512,87 @@ service cloud.firestore {
       }
     }
 
+    function isValidChatUpdateAction(changed) {
+      return (incoming().participants == existing().participants && (
+               // Action 1: Send/update last message metadata and unread counts
+               (!isDirectChatBlocked(existing()) &&
+                (!(existing().get('isGroup', false) == true && existing().get('onlyAdminsCanSend', false) == true) ||
+                 request.auth.uid in existing().get('adminUids', []) ||
+                 request.auth.uid == existing().createdBy) &&
+                changed.hasOnly([
+                  'lastMessage', 'lastMessageType', 'lastSenderId', 'lastMessageTime',
+                  'lastMessageDelivered', 'lastMessageRead',
+                  'unreadCounts', 'typingUids', 'participantNames', 'participantPhotos', 'updatedAt'
+                ])) ||
+               // Action 2: Reset own unread count or acknowledge last message delivered/read receipt
+               changed.hasOnly(['unreadCounts', 'lastMessageDelivered', 'lastMessageRead', 'updatedAt']) ||
+               // Action 3: Toggle typing indicator
+               changed.hasOnly(['typingUids', 'updatedAt']) ||
+               // Action 4: Pin or unpin a message in the chat
+               changed.hasOnly(['pinnedMessageId', 'pinnedMessageText', 'pinnedMessageSender', 'updatedAt']) ||
+               // Action 5: Update disappearing messages timer
+               changed.hasOnly(['disappearingHours', 'updatedAt']) ||
+               // Action 6: Pin, mute, or archive chat for participant
+               changed.hasOnly(['mutedBy', 'pinnedBy', 'archivedBy', 'updatedAt'])
+             )) ||
+             // Action 7: Group admin updates group name, photo, settings, or membership
+             (existing().get('isGroup', false) == true &&
+              incoming().get('isGroup', false) == true &&
+              (request.auth.uid in existing().get('adminUids', []) ||
+               request.auth.uid == existing().createdBy) &&
+              changed.hasOnly([
+                'groupName', 'groupPhotoUrl', 'participants',
+                'participantNames', 'participantPhotos', 'unreadCounts',
+                'adminUids', 'onlyAdminsCanSend', 'updatedAt'
+              ])) ||
+             // Action 8: Group member leaves the group
+             (existing().get('isGroup', false) == true &&
+              incoming().get('isGroup', false) == true &&
+              !(request.auth.uid in incoming().participants) &&
+              incoming().participants.size() == existing().participants.size() - 1 &&
+              changed.hasOnly(['participants', 'adminUids', 'typingUids', 'updatedAt']));
+    }
+
+    function isValidMessageUpdateAction(changed) {
+      return // Action 1: Recipient updates delivery/read receipt
+             (request.auth.uid != existing().senderId &&
+              changed.hasOnly(['delivered', 'read', 'updatedAt'])) ||
+             // Action 2: Participant adds or removes emoji reaction
+             changed.hasOnly(['reactions', 'updatedAt']) ||
+             // Action 3: Sender soft-deletes own message
+             (request.auth.uid == existing().senderId &&
+              incoming().deleted == true &&
+              incoming().text == '' &&
+              changed.hasOnly(['deleted', 'text', 'mediaUrl', 'mediaName', 'updatedAt'])) ||
+             // Action 4: Sender edits own non-deleted text message
+             (request.auth.uid == existing().senderId &&
+              existing().deleted == false &&
+              existing().type == 'text' &&
+              incoming().deleted == false &&
+              incoming().edited == true &&
+              incoming().text.size() >= 1 &&
+              changed.hasOnly(['text', 'edited', 'updatedAt'])) ||
+             // Action 5: Participant stars or unstars a message
+             changed.hasOnly(['starredBy', 'updatedAt']) ||
+             // Action 6: Participant hides/deletes any message for themselves only
+             (changed.hasOnly(['deletedFor', 'updatedAt']) &&
+              request.auth.uid in incoming().deletedFor &&
+              (existing().get('deletedFor', []).size() == 0 ||
+               incoming().deletedFor.hasAll(existing().get('deletedFor', [])))) ||
+             // Action 7: Recipient marks view-once photo as opened
+             (existing().get('viewOnce', false) == true &&
+              request.auth.uid != existing().senderId &&
+              changed.hasOnly(['viewedBy', 'updatedAt']) &&
+              request.auth.uid in incoming().viewedBy &&
+              (existing().get('viewedBy', []).size() == 0 ||
+               incoming().viewedBy.hasAll(existing().get('viewedBy', [])))) ||
+             // Action 8: Participant casts or updates their own vote on a poll
+             (existing().type == 'poll' &&
+              existing().deleted == false &&
+              changed.hasOnly(['pollVotes', 'updatedAt']) &&
+              incoming().pollVotes.diff(existing().get('pollVotes', {})).affectedKeys().hasOnly([request.auth.uid]));
+    }
+
     // --- CHATS & REAL-TIME MESSAGES (1-on-1 & GROUPS) ---
 
     match /chats/{chatId} {
@@ -523,51 +612,11 @@ service cloud.firestore {
 
       allow update: if isSignedIn() &&
                        isValidId(chatId) &&
-                       isValidChat(incoming()) &&
                        request.auth.uid in existing().participants &&
                        incoming().createdBy == existing().createdBy &&
-                       incoming().createdAt == existing().createdAt && (
-                         // Standard in-chat updates (participants unchanged)
-                         (incoming().participants == existing().participants && (
-                           // Action 1: Send/update last message metadata and unread counts
-                           (!isDirectChatBlocked(existing()) &&
-                            incoming().diff(existing()).affectedKeys().hasOnly([
-                              'lastMessage', 'lastMessageType', 'lastSenderId', 'lastMessageTime',
-                              'lastMessageDelivered', 'lastMessageRead',
-                              'unreadCounts', 'typingUids', 'participantNames', 'participantPhotos', 'updatedAt'
-                            ])) ||
-                           // Action 2: Reset own unread count or acknowledge last message delivered/read receipt
-                           incoming().diff(existing()).affectedKeys().hasOnly([
-                             'unreadCounts', 'lastMessageDelivered', 'lastMessageRead', 'updatedAt'
-                           ]) ||
-                           // Action 3: Toggle typing indicator
-                           incoming().diff(existing()).affectedKeys().hasOnly(['typingUids', 'updatedAt']) ||
-                           // Action 4: Pin or unpin a message in the chat
-                           incoming().diff(existing()).affectedKeys().hasOnly([
-                             'pinnedMessageId', 'pinnedMessageText', 'pinnedMessageSender', 'updatedAt'
-                           ]) ||
-                           // Action 5: Update disappearing messages timer
-                           incoming().diff(existing()).affectedKeys().hasOnly(['disappearingHours', 'updatedAt']) ||
-                           // Action 6: Pin, mute, or archive chat for participant
-                           incoming().diff(existing()).affectedKeys().hasOnly(['mutedBy', 'pinnedBy', 'archivedBy', 'updatedAt'])
-                         )) ||
-                         // Action 7: Group admin updates group name, photo, or membership
-                         (existing().get('isGroup', false) == true &&
-                          incoming().get('isGroup', false) == true &&
-                          request.auth.uid in existing().get('adminUids', []) &&
-                          incoming().diff(existing()).affectedKeys().hasOnly([
-                            'groupName', 'groupPhotoUrl', 'participants',
-                            'participantNames', 'participantPhotos', 'unreadCounts', 'adminUids', 'updatedAt'
-                          ])) ||
-                         // Action 8: Group member leaves the group
-                         (existing().get('isGroup', false) == true &&
-                          incoming().get('isGroup', false) == true &&
-                          !(request.auth.uid in incoming().participants) &&
-                          incoming().participants.size() == existing().participants.size() - 1 &&
-                          incoming().diff(existing()).affectedKeys().hasOnly([
-                            'participants', 'adminUids', 'typingUids', 'updatedAt'
-                          ]))
-                       );
+                       incoming().createdAt == existing().createdAt &&
+                       isValidChatUpdateAction(incoming().diff(existing()).affectedKeys()) &&
+                       isValidChat(incoming());
 
       allow delete: if false;
 
@@ -578,50 +627,29 @@ service cloud.firestore {
         allow create: if isSignedIn() &&
                          isValidId(chatId) &&
                          isValidId(messageId) &&
-                         isValidMessage(incoming()) &&
                          incoming().chatId == chatId &&
                          incoming().senderId == request.auth.uid &&
                          request.auth.uid in incoming().participants &&
+                         isValidMessage(incoming()) &&
                          exists(/databases/$(database)/documents/chats/$(chatId)) &&
                          get(/databases/$(database)/documents/chats/$(chatId)).data.participants == incoming().participants &&
-                         !isDirectChatBlocked(get(/databases/$(database)/documents/chats/$(chatId)).data);
+                         !isDirectChatBlocked(get(/databases/$(database)/documents/chats/$(chatId)).data) &&
+                         (!(get(/databases/$(database)/documents/chats/$(chatId)).data.get('isGroup', false) == true &&
+                            get(/databases/$(database)/documents/chats/$(chatId)).data.get('onlyAdminsCanSend', false) == true) ||
+                          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.get('adminUids', []) ||
+                          request.auth.uid == get(/databases/$(database)/documents/chats/$(chatId)).data.createdBy);
 
         allow update: if isSignedIn() &&
                          isValidId(chatId) &&
                          isValidId(messageId) &&
-                         isValidMessage(incoming()) &&
                          request.auth.uid in existing().participants &&
                          incoming().chatId == existing().chatId &&
                          incoming().senderId == existing().senderId &&
                          incoming().participants == existing().participants &&
                          incoming().type == existing().type &&
-                         incoming().timestamp == existing().timestamp && (
-                           // Action 1: Recipient updates delivery/read receipt
-                           (request.auth.uid != existing().senderId &&
-                            incoming().diff(existing()).affectedKeys().hasOnly(['delivered', 'read', 'updatedAt'])) ||
-                           // Action 2: Participant adds or removes emoji reaction
-                           incoming().diff(existing()).affectedKeys().hasOnly(['reactions', 'updatedAt']) ||
-                           // Action 3: Sender soft-deletes own message
-                           (request.auth.uid == existing().senderId &&
-                            incoming().deleted == true &&
-                            incoming().text == '' &&
-                            incoming().diff(existing()).affectedKeys().hasOnly(['deleted', 'text', 'mediaUrl', 'mediaName', 'updatedAt'])) ||
-                           // Action 4: Sender edits own non-deleted text message
-                           (request.auth.uid == existing().senderId &&
-                            existing().deleted == false &&
-                            existing().type == 'text' &&
-                            incoming().deleted == false &&
-                            incoming().edited == true &&
-                            incoming().text.size() >= 1 &&
-                            incoming().diff(existing()).affectedKeys().hasOnly(['text', 'edited', 'updatedAt'])) ||
-                           // Action 5: Participant stars or unstars a message
-                           incoming().diff(existing()).affectedKeys().hasOnly(['starredBy', 'updatedAt']) ||
-                           // Action 6: Participant hides/deletes any message for themselves only
-                           (incoming().diff(existing()).affectedKeys().hasOnly(['deletedFor', 'updatedAt']) &&
-                            request.auth.uid in incoming().deletedFor &&
-                            (existing().get('deletedFor', []).size() == 0 ||
-                             incoming().deletedFor.hasAll(existing().get('deletedFor', []))))
-                         );
+                         incoming().timestamp == existing().timestamp &&
+                         isValidMessageUpdateAction(incoming().diff(existing()).affectedKeys()) &&
+                         isValidMessage(incoming());
 
         allow delete: if isSignedIn() &&
                          isValidId(chatId) &&

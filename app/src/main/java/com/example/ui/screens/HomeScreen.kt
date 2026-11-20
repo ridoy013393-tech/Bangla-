@@ -74,8 +74,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.UpdateCheckResult
 import com.example.model.AppLanguage
+import com.example.model.Chat
 import com.example.model.ChatFontSize
 import com.example.model.ChatWallpaper
 import com.example.model.HomeTab
@@ -91,6 +94,7 @@ import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.BrandBlue
 import com.example.ui.theme.BrandPurple
 import com.example.viewmodel.MainViewModel
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -105,6 +109,7 @@ fun HomeScreen(
 ) {
     val strings = LocalAppStrings.current
     val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     val myProfile by viewModel.myProfile.collectAsStateWithLifecycle()
     val myPrivateUser by viewModel.myPrivateUser.collectAsStateWithLifecycle()
@@ -119,6 +124,7 @@ fun HomeScreen(
     val isNetworkOnline by viewModel.isNetworkOnline.collectAsStateWithLifecycle()
     val avatarUploadState by viewModel.avatarUploadState.collectAsStateWithLifecycle()
     val usernameSearchState by viewModel.usernameSearchState.collectAsStateWithLifecycle()
+    val updateCheckResult by viewModel.updateCheckResult.collectAsStateWithLifecycle()
 
     var selectedTab by rememberSaveable { mutableStateOf(HomeTab.CHATS) }
     var selectedChatFilter by rememberSaveable { mutableStateOf(ChatListFilter.ALL) }
@@ -128,6 +134,10 @@ fun HomeScreen(
     var showCreateGroupDialog by remember { mutableStateOf(false) }
     var showCreateStatusDialog by remember { mutableStateOf(false) }
     var viewingStories by remember { mutableStateOf<List<StatusStory>?>(null) }
+    var showMyQrSheet by remember { mutableStateOf(false) }
+    var showQrScannerDialog by remember { mutableStateOf(false) }
+    var pendingQrUsername by remember { mutableStateOf<String?>(null) }
+    var unlockTargetChat by remember { mutableStateOf<Chat?>(null) }
 
     val favoriteUids = remember(favorites) { favorites.map { it.favoriteUid }.toSet() }
 
@@ -413,6 +423,7 @@ fun HomeScreen(
                             discoverableProfiles = discoverableProfiles,
                             activeStatuses = activeStatuses,
                             favoriteUids = favoriteUids,
+                            lockedChatIds = preferences.lockedChatIds,
                             selectedFilter = selectedChatFilter,
                             searchQuery = searchQuery,
                             isRefreshing = isRefreshing,
@@ -424,6 +435,19 @@ fun HomeScreen(
                             onTogglePinChat = { chat -> viewModel.toggleChatPin(chat) },
                             onToggleMuteChat = { chat -> viewModel.toggleChatMute(chat) },
                             onToggleArchiveChat = { chat -> viewModel.toggleChatArchive(chat) },
+                            onToggleLockChat = { chat ->
+                                val alreadyLocked = chat.id in preferences.lockedChatIds
+                                val hasSecurity = preferences.appLockEnabled || preferences.biometricLockEnabled
+                                if (!alreadyLocked && !hasSecurity) {
+                                    scope.launch { snackbarHostState.showSnackbar(strings.setPinOrBiometricFirst) }
+                                } else {
+                                    viewModel.toggleChatLocked(
+                                        chatId = chat.id,
+                                        toastMessage = if (alreadyLocked) strings.chatUnlockedToast else strings.chatLockedToast
+                                    )
+                                }
+                            },
+                            onRequestUnlockChat = { chat -> unlockTargetChat = chat },
                             onExploreContacts = { selectedTab = HomeTab.CONTACTS },
                             onCreateGroupClick = { showCreateGroupDialog = true },
                             onAddStatusClick = { showCreateStatusDialog = true },
@@ -449,7 +473,11 @@ fun HomeScreen(
                             onUnblockUser = { uid -> viewModel.unblockUser(uid) },
                             onSubmitReport = { uid, reason, details ->
                                 viewModel.submitReport(uid, reason, details, strings.reportSubmitted)
-                            }
+                            },
+                            scannedUsernameTrigger = pendingQrUsername,
+                            onConsumeScannedUsername = { pendingQrUsername = null },
+                            onOpenMyQr = { showMyQrSheet = true },
+                            onOpenQrScanner = { showQrScannerDialog = true }
                         )
 
                         HomeTab.CALLS -> CallsTab(
@@ -498,6 +526,17 @@ fun HomeScreen(
                             onToggleScreenSecurity = { enabled -> viewModel.setScreenSecurityEnabled(enabled) },
                             onEnableAppLock = { pin -> viewModel.enableAppLock(pin, strings.appLockEnabledToast) },
                             onDisableAppLock = { viewModel.disableAppLock(strings.appLockDisabledToast) },
+                            onToggleBiometricLock = { enabled ->
+                                viewModel.setBiometricLockEnabled(enabled)
+                            },
+                            isCheckingUpdate = updateCheckResult is UpdateCheckResult.Checking,
+                            onOpenMyQr = { showMyQrSheet = true },
+                            onCheckForUpdates = {
+                                viewModel.checkForAppUpdate(
+                                    manual = true,
+                                    upToDateToast = strings.appUpToDateToast
+                                )
+                            },
                             onUnblockUser = { uid -> viewModel.unblockUser(uid) },
                             onLogout = onLogout,
                             onDeleteAccount = onDeleteAccount
@@ -665,6 +704,44 @@ fun HomeScreen(
             onDeleteStatus = { story -> viewModel.deleteStatus(story.id) },
             onAddAnother = { showCreateStatusDialog = true },
             onDismiss = { viewingStories = null }
+        )
+    }
+
+    if (showMyQrSheet) {
+        myProfile?.let { activeProfile ->
+            MyQrCodeSheet(
+                profile = activeProfile,
+                onOpenScanner = {
+                    showMyQrSheet = false
+                    showQrScannerDialog = true
+                },
+                onDismiss = { showMyQrSheet = false }
+            )
+        }
+    }
+
+    if (showQrScannerDialog) {
+        QrScannerDialog(
+            onUsernameScanned = { scannedUsername ->
+                showQrScannerDialog = false
+                selectedTab = HomeTab.CONTACTS
+                pendingQrUsername = scannedUsername
+                viewModel.searchUserByExactUsername(scannedUsername)
+            },
+            onDismiss = { showQrScannerDialog = false }
+        )
+    }
+
+    unlockTargetChat?.let { target ->
+        UnlockChatDialog(
+            chatTitle = target.peerName(viewModel.currentUserId),
+            expectedPinHash = preferences.appLockPinHash,
+            biometricEnabled = preferences.biometricLockEnabled,
+            onUnlocked = {
+                unlockTargetChat = null
+                onOpenChat(target.id)
+            },
+            onDismiss = { unlockTargetChat = null }
         )
     }
 }

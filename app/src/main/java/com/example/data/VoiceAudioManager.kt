@@ -143,15 +143,39 @@ data class VoicePlaybackState(
     val isBuffering: Boolean = false,
     val progress: Float = 0f,
     val currentSec: Int = 0,
-    val totalSec: Int = 0
+    val totalSec: Int = 0,
+    val playbackSpeed: Float = 1.0f
 )
 
 class VoiceNotePlayer {
     private var mediaPlayer: MediaPlayer? = null
     private var progressJob: Job? = null
+    private var preferredSpeed: Float = 1.0f
 
     private val _state = MutableStateFlow(VoicePlaybackState())
     val state: StateFlow<VoicePlaybackState> = _state.asStateFlow()
+
+    fun cycleSpeed(): Float {
+        preferredSpeed = nextPlaybackSpeed(preferredSpeed)
+        applySpeedToActivePlayer(preferredSpeed)
+        _state.value = _state.value.copy(playbackSpeed = preferredSpeed)
+        return preferredSpeed
+    }
+
+    private fun applySpeedToActivePlayer(speed: Float) {
+        val mp = mediaPlayer ?: return
+        runCatching {
+            val wasPlaying = mp.isPlaying
+            val params = mp.playbackParams
+            params.speed = speed
+            mp.playbackParams = params
+            if (!wasPlaying && mp.isPlaying) {
+                mp.pause()
+            }
+        }.onFailure { e ->
+            Log.w(TAG, "Playback speed adjustment unsupported on this device", e)
+        }
+    }
 
     fun togglePlay(
         messageId: String,
@@ -164,10 +188,11 @@ class VoiceNotePlayer {
             val mp = mediaPlayer ?: return
             if (mp.isPlaying) {
                 mp.pause()
-                _state.value = current.copy(isPlaying = false)
+                _state.value = current.copy(isPlaying = false, playbackSpeed = preferredSpeed)
             } else {
                 mp.start()
-                _state.value = current.copy(isPlaying = true)
+                applySpeedToActivePlayer(preferredSpeed)
+                _state.value = current.copy(isPlaying = true, playbackSpeed = preferredSpeed)
                 startProgressLoop(scope, messageId, fallbackDurationSec)
             }
             return
@@ -180,7 +205,8 @@ class VoiceNotePlayer {
             isBuffering = true,
             progress = 0f,
             currentSec = 0,
-            totalSec = fallbackDurationSec
+            totalSec = fallbackDurationSec,
+            playbackSpeed = preferredSpeed
         )
 
         try {
@@ -195,13 +221,21 @@ class VoiceNotePlayer {
                 setOnPreparedListener { mp ->
                     val total = (mp.duration / 1000).coerceAtLeast(fallbackDurationSec.coerceAtLeast(1))
                     mp.start()
+                    if (preferredSpeed != 1.0f) {
+                        runCatching {
+                            val params = mp.playbackParams
+                            params.speed = preferredSpeed
+                            mp.playbackParams = params
+                        }
+                    }
                     _state.value = VoicePlaybackState(
                         activeMessageId = messageId,
                         isPlaying = true,
                         isBuffering = false,
                         progress = 0f,
                         currentSec = 0,
-                        totalSec = total
+                        totalSec = total,
+                        playbackSpeed = preferredSpeed
                     )
                     startProgressLoop(scope, messageId, total)
                 }
@@ -236,7 +270,8 @@ class VoiceNotePlayer {
                     isBuffering = false,
                     progress = (posMs.toFloat() / durMs.toFloat()).coerceIn(0f, 1f),
                     currentSec = posMs / 1000,
-                    totalSec = durMs / 1000
+                    totalSec = durMs / 1000,
+                    playbackSpeed = preferredSpeed
                 )
                 delay(200L)
             }
@@ -253,10 +288,22 @@ class VoiceNotePlayer {
             mediaPlayer?.release()
         }
         mediaPlayer = null
-        _state.value = VoicePlaybackState()
+        _state.value = VoicePlaybackState(playbackSpeed = preferredSpeed)
     }
 
-    private companion object {
-        const val TAG = "VoiceNotePlayer"
+    companion object {
+        private const val TAG = "VoiceNotePlayer"
+
+        fun nextPlaybackSpeed(current: Float): Float = when {
+            current < 1.25f -> 1.5f
+            current < 1.75f -> 2.0f
+            else -> 1.0f
+        }
+
+        fun formatSpeedLabel(speed: Float): String = when {
+            speed >= 1.9f -> "2x"
+            speed >= 1.4f -> "1.5x"
+            else -> "1x"
+        }
     }
 }

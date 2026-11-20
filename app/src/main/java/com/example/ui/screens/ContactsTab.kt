@@ -29,6 +29,8 @@ import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.PersonSearch
+import androidx.compose.material.icons.rounded.QrCode2
+import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
@@ -99,7 +101,11 @@ fun ContactsTab(
     onToggleFavorite: (PublicProfile, Boolean) -> Unit,
     onBlockUser: (PublicProfile) -> Unit,
     onUnblockUser: (String) -> Unit,
-    onSubmitReport: (String, String, String) -> Unit
+    onSubmitReport: (String, String, String) -> Unit,
+    scannedUsernameTrigger: String? = null,
+    onConsumeScannedUsername: () -> Unit = {},
+    onOpenMyQr: () -> Unit = {},
+    onOpenQrScanner: () -> Unit = {}
 ) {
     val strings = LocalAppStrings.current
     val focusManager = LocalFocusManager.current
@@ -117,6 +123,16 @@ fun ContactsTab(
 
     val favoriteUids = remember(favorites) { favorites.map { it.favoriteUid }.toSet() }
     val blockedUids = remember(blockedUsers) { blockedUsers.map { it.blockedUid }.toSet() }
+
+    // Populate and search automatically when returning from QR Scanner
+    LaunchedEffect(scannedUsernameTrigger) {
+        if (!scannedUsernameTrigger.isNullOrBlank()) {
+            val clean = BanglaChatRepository.normalizeUsername(scannedUsernameTrigger)
+            query = clean
+            onSearchUsername(clean)
+            onConsumeScannedUsername()
+        }
+    }
 
     // Debounced exact @username lookup while typing
     LaunchedEffect(query) {
@@ -212,6 +228,63 @@ fun ContactsTab(
                 )
             }
         }
+
+        // Quick QR Connect Bar (Scan Friend's QR / Show My QR)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            OutlinedButton(
+                onClick = onOpenQrScanner,
+                shape = RoundedCornerShape(18.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(44.dp)
+                    .testTag("contacts_scan_qr_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.QrCodeScanner,
+                    contentDescription = null,
+                    tint = BrandBlue,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = strings.scanQrCodeAction,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
+            OutlinedButton(
+                onClick = onOpenMyQr,
+                shape = RoundedCornerShape(18.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(44.dp)
+                    .testTag("contacts_my_qr_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.QrCode2,
+                    contentDescription = null,
+                    tint = BrandPurple,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = strings.myQrCodeAction,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
 
         LazyColumn(
             modifier = Modifier

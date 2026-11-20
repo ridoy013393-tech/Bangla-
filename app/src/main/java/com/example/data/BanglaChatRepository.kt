@@ -904,6 +904,83 @@ class BanglaChatRepository(
         }
     }
 
+    suspend fun toggleGroupOnlyAdminsCanSend(chatId: String, onlyAdmins: Boolean): Result<Unit> {
+        val path = "chats/$chatId"
+        return try {
+            requireUserId()
+            db.collection("chats").document(chatId).update(
+                mapOf(
+                    "onlyAdminsCanSend" to onlyAdmins,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun toggleGroupMemberAdmin(chat: Chat, targetUid: String): Result<Unit> {
+        val path = "chats/${chat.id}"
+        return try {
+            val currentUid = requireUserId()
+            require(chat.isAdmin(currentUid)) { "Only admins can change admin roles" }
+            require(targetUid in chat.participants) { "User is not a group member" }
+            require(targetUid != chat.createdBy) { "Cannot demote group creator" }
+            val updatedAdmins = if (targetUid in chat.adminUids) {
+                chat.adminUids.filter { it != targetUid }
+            } else {
+                (chat.adminUids + targetUid).distinct().take(50)
+            }
+            db.collection("chats").document(chat.id).update(
+                mapOf(
+                    "adminUids" to updatedAdmins,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun removeGroupMember(chat: Chat, targetUid: String): Result<Unit> {
+        val path = "chats/${chat.id}"
+        return try {
+            val currentUid = requireUserId()
+            require(chat.isAdmin(currentUid)) { "Only admins can remove members" }
+            require(targetUid != currentUid && targetUid != chat.createdBy) { "Cannot remove this member" }
+            val remaining = chat.participants.filter { it != targetUid }
+            require(remaining.isNotEmpty()) { "Group must keep at least one member" }
+            val updatedAdmins = chat.adminUids.filter { it != targetUid }
+            val updatedNames = chat.participantNames.filterKeys { it != targetUid }
+            val updatedPhotos = chat.participantPhotos.filterKeys { it != targetUid }
+            val updatedUnread = chat.unreadCounts.filterKeys { it != targetUid }
+            db.collection("chats").document(chat.id).update(
+                mapOf(
+                    "participants" to remaining,
+                    "adminUids" to updatedAdmins,
+                    "participantNames" to updatedNames,
+                    "participantPhotos" to updatedPhotos,
+                    "unreadCounts" to updatedUnread,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, path)
+            Result.failure(e)
+        }
+    }
+
     suspend fun sendMessage(
         chat: Chat,
         senderProfile: PublicProfile,
@@ -915,7 +992,8 @@ class BanglaChatRepository(
         audioDurationSec: Long? = null,
         replyTo: ChatMessage? = null,
         replySenderName: String? = null,
-        forwarded: Boolean = false
+        forwarded: Boolean = false,
+        viewOnce: Boolean = false
     ): Result<Unit> {
         val chatId = chat.id
         val messagesPath = "chats/$chatId/messages"
@@ -925,6 +1003,7 @@ class BanglaChatRepository(
             val cleanText = text.trim().take(4000)
             require(cleanText.isNotEmpty() || !mediaUrl.isNullOrBlank()) { "Message cannot be empty" }
             val safeType = if (type in setOf("text", "image", "document", "audio")) type else "text"
+            val isViewOnceImage = viewOnce && safeType == "image"
 
             val expiresAtTimestamp = if (chat.disappearingHours in setOf(24L, 168L)) {
                 Timestamp(Date(System.currentTimeMillis() + chat.disappearingHours * 3_600_000L))
@@ -945,6 +1024,8 @@ class BanglaChatRepository(
                 "mediaName" to mediaName?.take(200),
                 "mediaSizeBytes" to mediaSizeBytes?.coerceIn(0L, 10_485_760L),
                 "audioDurationSec" to audioDurationSec?.coerceIn(0L, 600L),
+                "viewOnce" to if (isViewOnceImage) true else null,
+                "viewedBy" to if (isViewOnceImage) emptyList<String>() else null,
                 "delivered" to false,
                 "read" to false,
                 "deleted" to false,
@@ -976,6 +1057,7 @@ class BanglaChatRepository(
             }
 
             val preview = when {
+                isViewOnceImage -> "📷 ১ বার দেখার ছবি"
                 cleanText.isNotBlank() -> cleanText.take(500)
                 safeType == "audio" -> "🎤"
                 safeType == "image" -> "📷"
@@ -1003,6 +1085,144 @@ class BanglaChatRepository(
             throw e
         } catch (e: Exception) {
             handleFirestoreError(e, OperationType.CREATE, messagesPath)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun sendPollMessage(
+        chat: Chat,
+        senderProfile: PublicProfile,
+        question: String,
+        options: List<String>
+    ): Result<Unit> {
+        val chatId = chat.id
+        val messagesPath = "chats/$chatId/messages"
+        return try {
+            val uid = requireUserId()
+            require(uid in chat.participants) { "Not a participant of this chat" }
+            val cleanQuestion = question.trim().take(240)
+            val cleanOptions = options.map { it.trim().take(80) }.filter { it.isNotEmpty() }.distinct().take(6)
+            require(cleanQuestion.isNotEmpty()) { "Poll question cannot be empty" }
+            require(cleanOptions.size >= 2) { "Provide at least 2 poll options" }
+
+            val senderDisplayName = senderProfile.name.ifBlank { "Bangla Chat User" }.take(60)
+            val msgRef = db.collection("chats").document(chatId).collection("messages").document()
+            val messagePayload = mapOf(
+                "chatId" to chatId,
+                "senderId" to uid,
+                "senderName" to senderDisplayName,
+                "participants" to chat.participants,
+                "text" to cleanQuestion,
+                "type" to "poll",
+                "pollQuestion" to cleanQuestion,
+                "pollOptions" to cleanOptions,
+                "pollVotes" to emptyMap<String, String>(),
+                "delivered" to false,
+                "read" to false,
+                "deleted" to false,
+                "edited" to false,
+                "forwarded" to false,
+                "reactions" to emptyMap<String, String>(),
+                "starredBy" to emptyList<String>(),
+                "timestamp" to FieldValue.serverTimestamp(),
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            msgRef.set(messagePayload).await()
+
+            val newUnread = chat.unreadCounts.toMutableMap()
+            newUnread[uid] = 0L
+            chat.participants.filter { it != uid }.forEach { otherUid ->
+                newUnread[otherUid] = (chat.unreadCounts[otherUid] ?: 0L) + 1L
+            }
+            val updatedNames = chat.participantNames.toMutableMap().apply { put(uid, senderDisplayName) }
+            val updatedPhotos = chat.participantPhotos.toMutableMap().apply { put(uid, senderProfile.photoUrl.take(500)) }
+
+            db.collection("chats").document(chatId).update(
+                mapOf(
+                    "lastMessage" to "📊 $cleanQuestion".take(500),
+                    "lastMessageType" to "poll",
+                    "lastSenderId" to uid,
+                    "lastMessageTime" to FieldValue.serverTimestamp(),
+                    "lastMessageDelivered" to false,
+                    "lastMessageRead" to false,
+                    "unreadCounts" to newUnread,
+                    "typingUids" to chat.typingUids.filter { it != uid },
+                    "participantNames" to updatedNames,
+                    "participantPhotos" to updatedPhotos,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.CREATE, messagesPath)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun voteOnPoll(
+        chatId: String,
+        message: ChatMessage,
+        currentUserId: String,
+        optionIndex: Int
+    ): Result<Unit> {
+        val path = "chats/$chatId/messages/${message.id}"
+        return try {
+            val uid = requireUserId()
+            check(uid == currentUserId) { "Signed-in user mismatch" }
+            if (optionIndex !in message.pollOptions.indices) return Result.success(Unit)
+            val updatedVotes = message.pollVotes.toMutableMap()
+            val choice = optionIndex.toString()
+            if (updatedVotes[uid] == choice) {
+                updatedVotes.remove(uid)
+            } else {
+                updatedVotes[uid] = choice
+            }
+            db.collection("chats").document(chatId)
+                .collection("messages").document(message.id)
+                .update(
+                    mapOf(
+                        "pollVotes" to updatedVotes,
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                ).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun markViewOnceOpened(
+        chatId: String,
+        message: ChatMessage,
+        currentUserId: String
+    ): Result<Unit> {
+        val path = "chats/$chatId/messages/${message.id}"
+        return try {
+            val uid = requireUserId()
+            check(uid == currentUserId) { "Signed-in user mismatch" }
+            if (!message.viewOnce || message.senderId == uid || uid in message.viewedBy) {
+                return Result.success(Unit)
+            }
+            val updated = (message.viewedBy + uid).distinct().take(50)
+            db.collection("chats").document(chatId)
+                .collection("messages").document(message.id)
+                .update(
+                    mapOf(
+                        "viewedBy" to updated,
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                ).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, path)
             Result.failure(e)
         }
     }
@@ -1040,7 +1260,7 @@ class BanglaChatRepository(
                 ?: listOf(callerUid, peerUid).sorted()
             val safeCallType = if (callType == "video") "video" else "audio"
             val safeCallStatus = when (callStatus) {
-                "answered", "declined", "missed" -> callStatus
+                "answered", "declined", "missed", "busy" -> callStatus
                 else -> if (durationSeconds > 0L) "answered" else "missed"
             }
             val safeDuration = durationSeconds.coerceIn(0L, 86400L)
@@ -1051,6 +1271,7 @@ class BanglaChatRepository(
                     val durText = formatCallDurationBanglaCompact(safeDuration)
                     "$typeLabel • $durText"
                 }
+                safeCallStatus == "busy" -> "$typeLabel • অন্য কলে ব্যস্ত"
                 safeCallStatus == "declined" -> "$typeLabel • বাতিল"
                 else -> "মিসড $typeLabel"
             }.take(500)

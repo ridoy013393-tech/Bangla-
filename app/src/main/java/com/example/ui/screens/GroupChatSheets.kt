@@ -22,10 +22,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ExitToApp
+import androidx.compose.material.icons.rounded.AdminPanelSettings
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.PersonAdd
+import androidx.compose.material.icons.rounded.PersonRemove
+import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -39,6 +42,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -211,6 +215,10 @@ fun GroupInfoSheet(
     discoverableContacts: List<PublicProfile>,
     onRenameGroup: (String) -> Unit,
     onAddMembers: (List<PublicProfile>) -> Unit,
+    onToggleOnlyAdminsCanSend: (Boolean) -> Unit = {},
+    onToggleMemberAdmin: (String) -> Unit = {},
+    onRemoveMember: (String) -> Unit = {},
+    onOpenSharedMedia: () -> Unit = {},
     onLeaveGroup: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -219,6 +227,7 @@ fun GroupInfoSheet(
     var editingName by remember { mutableStateOf(false) }
     var nameDraft by remember(chat.groupName) { mutableStateOf(chat.groupName) }
     var showAddMemberPicker by remember { mutableStateOf(false) }
+    var manageMemberUid by remember { mutableStateOf<String?>(null) }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -288,6 +297,64 @@ fun GroupInfoSheet(
             )
 
             Spacer(modifier = Modifier.height(14.dp))
+
+            OutlinedButton(
+                onClick = {
+                    onDismiss()
+                    onOpenSharedMedia()
+                },
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(46.dp)
+                    .testTag("group_shared_media_button")
+            ) {
+                Icon(Icons.Rounded.PhotoLibrary, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(strings.sharedMediaAction)
+            }
+
+            if (isAdmin) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.AdminPanelSettings,
+                            contentDescription = null,
+                            tint = BrandPurple
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = strings.groupOnlyAdminsSendSetting,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = strings.groupOnlyAdminsSendDesc,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = chat.onlyAdminsCanSend,
+                            onCheckedChange = onToggleOnlyAdminsCanSend,
+                            modifier = Modifier.testTag("group_only_admins_switch")
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
             HorizontalDivider()
             Spacer(modifier = Modifier.height(10.dp))
 
@@ -295,14 +362,19 @@ fun GroupInfoSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(210.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 items(chat.participants, key = { it }) { uid ->
                     val name = chat.participantNames[uid].orEmpty().ifBlank { "Member" }
                     val photo = chat.participantPhotos[uid].orEmpty()
                     val memberIsAdmin = uid in chat.adminUids || uid == chat.createdBy
+                    val canManageMember = isAdmin && uid != currentUserId && uid != chat.createdBy
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable(enabled = canManageMember) { manageMemberUid = uid }
+                            .padding(horizontal = 6.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         UserAvatar(name = name, photoUrl = photo, size = 40.dp)
@@ -367,6 +439,49 @@ fun GroupInfoSheet(
             }
             Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+
+    manageMemberUid?.let { targetUid ->
+        val memberName = chat.participantNames[targetUid].orEmpty().ifBlank { "Member" }
+        val memberIsAdmin = targetUid in chat.adminUids
+        AlertDialog(
+            onDismissRequest = { manageMemberUid = null },
+            title = { Text(memberName, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            onToggleMemberAdmin(targetUid)
+                            manageMemberUid = null
+                        },
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Rounded.AdminPanelSettings, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(if (memberIsAdmin) strings.groupDismissAdmin else strings.groupMakeAdmin)
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            onRemoveMember(targetUid)
+                            manageMemberUid = null
+                        },
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = DangerRed),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Rounded.PersonRemove, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(strings.groupRemoveMember)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { manageMemberUid = null }) {
+                    Text(strings.close)
+                }
+            }
+        )
     }
 
     if (showAddMemberPicker) {

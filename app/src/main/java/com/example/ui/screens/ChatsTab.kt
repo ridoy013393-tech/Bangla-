@@ -33,10 +33,13 @@ import androidx.compose.material.icons.rounded.DoneAll
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Group
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.Photo
+import androidx.compose.material.icons.rounded.Poll
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Unarchive
 import androidx.compose.material3.Button
@@ -97,6 +100,7 @@ fun ChatsTab(
     discoverableProfiles: List<PublicProfile>,
     activeStatuses: List<StatusStory>,
     favoriteUids: Set<String>,
+    lockedChatIds: Set<String> = emptySet(),
     selectedFilter: ChatListFilter,
     searchQuery: String,
     isRefreshing: Boolean,
@@ -108,6 +112,8 @@ fun ChatsTab(
     onTogglePinChat: (Chat) -> Unit,
     onToggleMuteChat: (Chat) -> Unit,
     onToggleArchiveChat: (Chat) -> Unit,
+    onToggleLockChat: (Chat) -> Unit = {},
+    onRequestUnlockChat: (Chat) -> Unit = { onChatClick(it.id) },
     onExploreContacts: () -> Unit,
     onCreateGroupClick: () -> Unit,
     onAddStatusClick: () -> Unit,
@@ -283,6 +289,7 @@ fun ChatsTab(
                                 } else {
                                     peerUid.isNotBlank() && peerUid in chat.typingUids
                                 }
+                                val isLocked = chat.id in lockedChatIds
                                 ConversationRow(
                                     chat = chat,
                                     currentUserId = currentUserId,
@@ -292,7 +299,10 @@ fun ChatsTab(
                                     peerPhoto = peerPhoto,
                                     peerOnline = !chat.isGroup && peerProfile?.isVisiblyOnline(nowMillis) == true,
                                     isPeerTyping = isPeerTyping,
-                                    onClick = { onChatClick(chat.id) },
+                                    isLocked = isLocked,
+                                    onClick = {
+                                        if (isLocked) onRequestUnlockChat(chat) else onChatClick(chat.id)
+                                    },
                                     onLongClick = { actionTargetChat = chat }
                                 )
                                 HorizontalDivider(
@@ -393,6 +403,7 @@ fun ChatsTab(
                             else peerProfile?.let { it.visiblePhotoUrl() }
                                 ?: chat.peerPhotoUrl(currentUserId)
 
+                            val isLocked = chat.id in lockedChatIds
                             ConversationRow(
                                 chat = chat,
                                 currentUserId = currentUserId,
@@ -402,7 +413,10 @@ fun ChatsTab(
                                 peerPhoto = peerPhoto,
                                 peerOnline = peerOnline,
                                 isPeerTyping = isPeerTyping,
-                                onClick = { onChatClick(chat.id) },
+                                isLocked = isLocked,
+                                onClick = {
+                                    if (isLocked) onRequestUnlockChat(chat) else onChatClick(chat.id)
+                                },
                                 onLongClick = { actionTargetChat = chat }
                             )
                             HorizontalDivider(
@@ -416,11 +430,12 @@ fun ChatsTab(
         }
     }
 
-    // Long-press Chat Management Sheet (Pin / Mute / Archive)
+    // Long-press Chat Management Sheet (Pin / Mute / Archive / Lock)
     actionTargetChat?.let { target ->
         val pinned = target.isPinnedFor(currentUserId)
         val muted = target.isMutedFor(currentUserId)
         val archived = target.isArchivedFor(currentUserId)
+        val locked = target.id in lockedChatIds
 
         ModalBottomSheet(onDismissRequest = { actionTargetChat = null }) {
             Column(
@@ -450,6 +465,15 @@ fun ChatsTab(
                     label = if (muted) strings.unmuteChat else strings.muteChat,
                     onClick = {
                         onToggleMuteChat(target)
+                        actionTargetChat = null
+                    }
+                )
+                ChatFlagOptionRow(
+                    icon = if (locked) Icons.Rounded.LockOpen else Icons.Rounded.Lock,
+                    tint = BrandBlue,
+                    label = if (locked) strings.unlockChatAction else strings.lockChatAction,
+                    onClick = {
+                        onToggleLockChat(target)
                         actionTargetChat = null
                     }
                 )
@@ -557,6 +581,7 @@ private fun ConversationRow(
     peerPhoto: String,
     peerOnline: Boolean,
     isPeerTyping: Boolean,
+    isLocked: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
@@ -622,6 +647,15 @@ private fun ConversationRow(
                         )
                         Spacer(modifier = Modifier.width(5.dp))
                     }
+                    if (isLocked) {
+                        Icon(
+                            imageVector = Icons.Rounded.Lock,
+                            contentDescription = strings.lockChatAction,
+                            tint = BrandBlue,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
                     Text(
                         text = peerName,
                         style = MaterialTheme.typography.titleMedium.copy(
@@ -646,7 +680,27 @@ private fun ConversationRow(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (isPeerTyping) {
+                if (isLocked) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Lock,
+                            contentDescription = null,
+                            tint = BrandBlue,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            text = strings.lockedChatPreview,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                } else if (isPeerTyping) {
                     Text(
                         text = strings.typingIndicator,
                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
@@ -684,6 +738,15 @@ private fun ConversationRow(
                                     imageVector = Icons.Rounded.Mic,
                                     contentDescription = null,
                                     tint = OnlineGreen,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                            }
+                            "poll" -> {
+                                Icon(
+                                    imageVector = Icons.Rounded.Poll,
+                                    contentDescription = null,
+                                    tint = BrandPurple,
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))

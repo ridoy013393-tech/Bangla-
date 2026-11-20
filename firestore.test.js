@@ -879,4 +879,187 @@ test("WhatsApp-style calling->ringing handshake & chat-level delivery/read recei
   );
 });
 
+test("v1.5 features: Polls voting, View Once opened receipt, Group admin-only send, and Busy call status", async () => {
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID).firestore();
+  const charlieDb = testEnv.authenticatedContext(CHARLIE_UID).firestore();
+  const now = pastDate(3000);
+
+  // 1. Busy call status transition
+  const busyCallId = "call_busy_test_1";
+  await assertSucceeds(
+    aliceDb.collection("callSessions").doc(busyCallId).set({
+      callerUid: ALICE_UID,
+      callerName: "Alice",
+      callerPhotoUrl: "",
+      calleeUid: BOB_UID,
+      calleeName: "Bob",
+      calleePhotoUrl: "",
+      participants: [ALICE_UID, BOB_UID],
+      callType: "audio",
+      status: "calling",
+      offerSdp: "v=0",
+      createdAt: now,
+      updatedAt: now,
+    })
+  );
+  await assertSucceeds(
+    bobDb.collection("callSessions").doc(busyCallId).update({
+      status: "busy",
+      updatedAt: pastDate(2500),
+    })
+  );
+
+  // 2. Group chat with admin-only send + Poll + View Once photo
+  const groupId = "group_v15_test";
+  await assertSucceeds(
+    aliceDb.collection("chats").doc(groupId).set({
+      participants: [ALICE_UID, BOB_UID],
+      participantNames: { [ALICE_UID]: "Alice", [BOB_UID]: "Bob" },
+      participantPhotos: { [ALICE_UID]: "", [BOB_UID]: "" },
+      isGroup: true,
+      groupName: "Bangla Devs",
+      groupPhotoUrl: "",
+      adminUids: [ALICE_UID],
+      onlyAdminsCanSend: false,
+      lastMessage: "স্বাগতম",
+      lastMessageType: "text",
+      lastSenderId: ALICE_UID,
+      lastMessageTime: now,
+      unreadCounts: { [ALICE_UID]: 0, [BOB_UID]: 0 },
+      typingUids: [],
+      createdBy: ALICE_UID,
+      createdAt: now,
+      updatedAt: now,
+    })
+  );
+
+  // Poll created by Alice
+  const pollMsgRef = aliceDb.collection("chats").doc(groupId).collection("messages").doc("poll_1");
+  await assertSucceeds(
+    pollMsgRef.set({
+      chatId: groupId,
+      senderId: ALICE_UID,
+      senderName: "Alice",
+      participants: [ALICE_UID, BOB_UID],
+      text: "আজ কখন মিটিং?",
+      type: "poll",
+      pollQuestion: "আজ কখন মিটিং?",
+      pollOptions: ["রাত ৮টা", "রাত ৯টা", "আগামীকাল"],
+      pollVotes: {},
+      delivered: true,
+      read: false,
+      deleted: false,
+      timestamp: pastDate(2200),
+      updatedAt: pastDate(2200),
+    })
+  );
+
+  // Bob casts his own vote -> succeeds
+  await assertSucceeds(
+    bobDb.collection("chats").doc(groupId).collection("messages").doc("poll_1").update({
+      pollVotes: { [BOB_UID]: "1" },
+      updatedAt: pastDate(2000),
+    })
+  );
+
+  // Bob tries to tamper with Alice's vote -> fails
+  await assertFails(
+    bobDb.collection("chats").doc(groupId).collection("messages").doc("poll_1").update({
+      pollVotes: { [BOB_UID]: "1", [ALICE_UID]: "0" },
+      updatedAt: pastDate(1900),
+    })
+  );
+
+  // View Once photo sent by Alice
+  const voRef = aliceDb.collection("chats").doc(groupId).collection("messages").doc("vo_1");
+  await assertSucceeds(
+    voRef.set({
+      chatId: groupId,
+      senderId: ALICE_UID,
+      senderName: "Alice",
+      participants: [ALICE_UID, BOB_UID],
+      text: "",
+      type: "image",
+      mediaUrl: "https://example.com/secret.jpg",
+      mediaName: "secret.jpg",
+      mediaSizeBytes: 12345,
+      viewOnce: true,
+      viewedBy: [],
+      delivered: true,
+      read: false,
+      deleted: false,
+      timestamp: pastDate(1800),
+      updatedAt: pastDate(1800),
+    })
+  );
+
+  // Bob opens View Once photo and appends his UID to viewedBy -> succeeds
+  await assertSucceeds(
+    bobDb.collection("chats").doc(groupId).collection("messages").doc("vo_1").update({
+      viewedBy: [BOB_UID],
+      updatedAt: pastDate(1700),
+    })
+  );
+
+  // Alice enables onlyAdminsCanSend -> succeeds
+  await assertSucceeds(
+    aliceDb.collection("chats").doc(groupId).update({
+      onlyAdminsCanSend: true,
+      updatedAt: pastDate(1600),
+    })
+  );
+
+  // Non-admin Bob tries to send a message when onlyAdminsCanSend == true -> fails
+  await assertFails(
+    bobDb.collection("chats").doc(groupId).collection("messages").doc("bob_blocked_msg").set({
+      chatId: groupId,
+      senderId: BOB_UID,
+      senderName: "Bob",
+      participants: [ALICE_UID, BOB_UID],
+      text: "হ্যালো",
+      type: "text",
+      delivered: false,
+      read: false,
+      deleted: false,
+      timestamp: pastDate(1500),
+      updatedAt: pastDate(1500),
+    })
+  );
+
+  // Admin Alice can still send a message -> succeeds
+  await assertSucceeds(
+    aliceDb.collection("chats").doc(groupId).collection("messages").doc("alice_admin_msg").set({
+      chatId: groupId,
+      senderId: ALICE_UID,
+      senderName: "Alice",
+      participants: [ALICE_UID, BOB_UID],
+      text: "শুধু অ্যাডমিন নোটিশ",
+      type: "text",
+      delivered: false,
+      read: false,
+      deleted: false,
+      timestamp: pastDate(1400),
+      updatedAt: pastDate(1400),
+    })
+  );
+
+  // Non-admin Bob cannot promote himself or remove Alice
+  await assertFails(
+    bobDb.collection("chats").doc(groupId).update({
+      adminUids: [ALICE_UID, BOB_UID],
+      updatedAt: pastDate(1300),
+    })
+  );
+
+  // Outsider Charlie cannot vote on poll
+  await assertFails(
+    charlieDb.collection("chats").doc(groupId).collection("messages").doc("poll_1").update({
+      pollVotes: { [BOB_UID]: "1", [CHARLIE_UID]: "0" },
+      updatedAt: pastDate(1200),
+    })
+  );
+});
+
+
 

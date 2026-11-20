@@ -199,7 +199,8 @@ class ChatViewModel(
         senderProfile: PublicProfile,
         uri: Uri,
         isImage: Boolean,
-        caption: String = ""
+        caption: String = "",
+        viewOnce: Boolean = false
     ) {
         val currentChat = chat.value ?: return
         pendingRetryUri = uri to isImage
@@ -231,7 +232,8 @@ class ChatViewModel(
                     mediaName = uploaded.fileName,
                     mediaSizeBytes = uploaded.sizeBytes,
                     replyTo = reply,
-                    replySenderName = replySender
+                    replySenderName = replySender,
+                    viewOnce = viewOnce && isImage
                 ).onSuccess {
                     pendingRetryUri = null
                     _uploadState.value = UploadState.Idle
@@ -243,6 +245,27 @@ class ChatViewModel(
                 _uploadState.value = UploadState.Failed(msg)
                 _snackbarEvents.tryEmit(msg)
             }
+        }
+    }
+
+    fun sendPollMessage(senderProfile: PublicProfile, question: String, options: List<String>) {
+        val currentChat = chat.value ?: return
+        viewModelScope.launch {
+            repository.sendPollMessage(currentChat, senderProfile, question, options)
+                .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Failed to create poll") }
+        }
+    }
+
+    fun voteOnPoll(message: ChatMessage, optionIndex: Int) {
+        viewModelScope.launch {
+            repository.voteOnPoll(chatId, message, currentUserId, optionIndex)
+                .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Failed to vote") }
+        }
+    }
+
+    fun markViewOnceOpened(message: ChatMessage) {
+        viewModelScope.launch {
+            repository.markViewOnceOpened(chatId, message, currentUserId)
         }
     }
 
@@ -396,6 +419,31 @@ class ChatViewModel(
             repository.leaveGroup(currentChat, currentUserId)
                 .onSuccess { onLeft() }
                 .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Failed to leave group") }
+        }
+    }
+
+    fun toggleGroupOnlyAdminsCanSend(onlyAdmins: Boolean) {
+        viewModelScope.launch {
+            repository.toggleGroupOnlyAdminsCanSend(chatId, onlyAdmins)
+                .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Failed to update group setting") }
+        }
+    }
+
+    fun toggleGroupMemberAdmin(targetUid: String, toastMessage: String) {
+        val currentChat = chat.value ?: return
+        viewModelScope.launch {
+            repository.toggleGroupMemberAdmin(currentChat, targetUid)
+                .onSuccess { _snackbarEvents.tryEmit(toastMessage) }
+                .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Failed to update admin role") }
+        }
+    }
+
+    fun removeGroupMember(targetUid: String, toastMessage: String) {
+        val currentChat = chat.value ?: return
+        viewModelScope.launch {
+            repository.removeGroupMember(currentChat, targetUid)
+                .onSuccess { _snackbarEvents.tryEmit(toastMessage) }
+                .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Failed to remove member") }
         }
     }
 

@@ -65,8 +65,21 @@ jobs:
       - name: Build Debug APK
         run: gradle :app:assembleDebug --no-daemon
 
-      - name: Prepare BanglaChat.apk
-        run: cp app/build/outputs/apk/debug/app-debug.apk BanglaChat.apk
+      - name: Prepare BanglaChat.apk & version.json
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk BanglaChat.apk
+          V_CODE=$(grep -oE 'versionCode\s*=\s*[0-9]+' app/build.gradle.kts | head -n1 | grep -oE '[0-9]+')
+          V_NAME=$(grep -oE 'versionName\s*=\s*"[^"]+"' app/build.gradle.kts | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
+          cat <<EOF > version.json
+          {
+            "versionCode": ${V_CODE:-1},
+            "versionName": "${V_NAME:-1.0}",
+            "apkUrl": "https://github.com/${{ github.repository }}/releases/download/latest-apk/BanglaChat.apk",
+            "releaseUrl": "https://github.com/${{ github.repository }}/releases/tag/latest-apk",
+            "notes": "Bangla Chat v${V_NAME:-1.0} — নতুন ফিচার ও পারফরম্যান্স আপডেট"
+          }
+          EOF
+          cat version.json
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
@@ -80,5 +93,7 @@ jobs:
           tag_name: latest-apk
           name: Bangla Chat (Latest APK)
           body: "Bangla Chat ইনস্টলযোগ্য Android APK — নিচের BanglaChat.apk ফাইলে ট্যাপ করে সরাসরি ফোনে ডাউনলোড ও ইনস্টল করুন।"
-          files: BanglaChat.apk
+          files: |
+            BanglaChat.apk
+            version.json
           make_latest: true
