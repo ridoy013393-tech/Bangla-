@@ -68,4 +68,32 @@ class ExampleUnitTest {
         val longPrompt = "a".repeat(2500)
         assertEquals(1800, AiAssistantRepository.truncateForGetUrl(longPrompt).length)
     }
+
+    @Test
+    fun callDurationFormattingInBanglaAndEnglish() {
+        assertEquals("", com.example.ui.components.formatCallDuration(0L, AppLanguage.BANGLA))
+        assertEquals("৪৫ সেকেন্ড", com.example.ui.components.formatCallDuration(45L, AppLanguage.BANGLA))
+        assertEquals("১ মিনিট", com.example.ui.components.formatCallDuration(60L, AppLanguage.BANGLA))
+        assertEquals("২ মিনিট ১৫ সেকেন্ড", com.example.ui.components.formatCallDuration(135L, AppLanguage.BANGLA))
+        assertEquals("১ ঘণ্টা ১ মিনিট", com.example.ui.components.formatCallDuration(3665L, AppLanguage.BANGLA))
+
+        assertEquals("", com.example.ui.components.formatCallDuration(0L, AppLanguage.ENGLISH))
+        assertEquals("45 sec", com.example.ui.components.formatCallDuration(45L, AppLanguage.ENGLISH))
+        assertEquals("1 min", com.example.ui.components.formatCallDuration(60L, AppLanguage.ENGLISH))
+        assertEquals("2 min 15 sec", com.example.ui.components.formatCallDuration(135L, AppLanguage.ENGLISH))
+        assertEquals("1 hr 1 min", com.example.ui.components.formatCallDuration(3665L, AppLanguage.ENGLISH))
+    }
+
+    @Test
+    fun deleteForMeIsolationOnChatMessage() {
+        val msg = com.example.model.ChatMessage(
+            id = "m1",
+            senderId = "alice",
+            text = "Hello",
+            deletedFor = listOf("bob")
+        )
+        assertTrue(msg.isDeletedFor("bob"))
+        assertFalse(msg.isDeletedFor("alice"))
+    }
 }
+

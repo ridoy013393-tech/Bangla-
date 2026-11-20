@@ -235,6 +235,7 @@ fun LiveCallScreen(
     }
     var callDurationSec by remember { mutableIntStateOf(0) }
     var callConnected by remember { mutableStateOf(false) }
+    var remoteDeclined by remember { mutableStateOf(false) }
     var callEnded by remember { mutableStateOf(false) }
     var logSaved by remember { mutableStateOf(false) }
 
@@ -285,6 +286,20 @@ fun LiveCallScreen(
                     callType = if (isVideoCall) "video" else "audio",
                     durationSeconds = duration
                 )
+                if (request is ActiveCallRequest.Outgoing) {
+                    val callStatus = when {
+                        callConnected || duration > 0L -> "answered"
+                        remoteDeclined -> "declined"
+                        else -> "missed"
+                    }
+                    repository.logCallMessageInChat(
+                        callerProfile = myProfile,
+                        peerProfile = request.peer,
+                        callType = if (isVideoCall) "video" else "audio",
+                        callStatus = callStatus,
+                        durationSeconds = duration
+                    )
+                }
             }
             onCallClosed()
         }
@@ -362,6 +377,9 @@ fun LiveCallScreen(
                     rtcManager.setRemoteAnswer(session.answerSdp)
                 }
             } else if (session.status in setOf("declined", "ended", "missed")) {
+                if (session.status == "declined") {
+                    remoteDeclined = true
+                }
                 finishAndClose(null)
             }
         }

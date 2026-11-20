@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.model.AppLanguage
 import com.example.ui.theme.BrandBlue
 import com.example.ui.theme.BrandBlueDark
 import com.example.ui.theme.BrandBlueLight
@@ -580,3 +581,40 @@ fun formatFileSize(bytes: Long): String {
         else -> String.format(Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0))
     }
 }
+
+fun toBanglaDigits(input: String): String {
+    val bangla = charArrayOf('০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯')
+    return buildString(input.length) {
+        for (ch in input) {
+            if (ch in '0'..'9') append(bangla[ch - '0']) else append(ch)
+        }
+    }
+}
+
+fun formatCallDuration(seconds: Long, language: AppLanguage): String {
+    if (seconds <= 0L) return ""
+    val hours = seconds / 3600L
+    val mins = (seconds % 3600L) / 60L
+    val secs = seconds % 60L
+    return when (language) {
+        AppLanguage.BANGLA -> {
+            val parts = buildList {
+                if (hours > 0L) add("${toBanglaDigits(hours.toString())} ঘণ্টা")
+                if (mins > 0L) add("${toBanglaDigits(mins.toString())} মিনিট")
+                if (hours == 0L && secs > 0L) add("${toBanglaDigits(secs.toString())} সেকেন্ড")
+                if (hours > 0L && mins == 0L && secs > 0L) add("${toBanglaDigits(secs.toString())} সেকেন্ড")
+            }
+            parts.joinToString(" ")
+        }
+        AppLanguage.ENGLISH -> {
+            val parts = buildList {
+                if (hours > 0L) add("${hours} hr")
+                if (mins > 0L) add("${mins} min")
+                if (hours == 0L && secs > 0L) add("${secs} sec")
+                if (hours > 0L && mins == 0L && secs > 0L) add("${secs} sec")
+            }
+            parts.joinToString(" ")
+        }
+    }
+}
+

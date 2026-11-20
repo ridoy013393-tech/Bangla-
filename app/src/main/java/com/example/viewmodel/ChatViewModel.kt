@@ -269,6 +269,14 @@ class ChatViewModel(
         }
     }
 
+    fun deleteMessageForMe(message: ChatMessage, successToast: String) {
+        viewModelScope.launch {
+            repository.deleteMessageForMe(chatId, message.id, currentUserId)
+                .onSuccess { _snackbarEvents.tryEmit(successToast) }
+                .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Delete failed") }
+        }
+    }
+
     fun toggleStarMessage(message: ChatMessage) {
         viewModelScope.launch {
             repository.toggleStarMessage(chatId, message, currentUserId)
@@ -410,7 +418,7 @@ class ChatViewModel(
     fun generateQuickReplies(messages: List<ChatMessage>, language: AppLanguage) {
         val currentChat = chat.value ?: return
         val recentText = messages
-            .filter { !it.deleted && it.text.isNotBlank() }
+            .filter { !it.deleted && it.type != "call" && it.text.isNotBlank() }
             .takeLast(8)
             .map { msg ->
                 val name = if (msg.senderId == currentUserId) "Me"
@@ -437,7 +445,7 @@ class ChatViewModel(
     fun summarizeConversation(messages: List<ChatMessage>, language: AppLanguage) {
         val currentChat = chat.value ?: return
         val recentText = messages
-            .filter { !it.deleted && it.text.isNotBlank() }
+            .filter { !it.deleted && it.type != "call" && it.text.isNotBlank() }
             .takeLast(30)
             .map { msg ->
                 val name = if (msg.senderId == currentUserId) "Me"

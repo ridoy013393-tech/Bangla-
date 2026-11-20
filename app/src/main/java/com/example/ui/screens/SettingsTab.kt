@@ -7,6 +7,7 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,13 +24,18 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.CameraAlt
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Description
@@ -38,10 +44,13 @@ import androidx.compose.material.icons.rounded.FormatSize
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.MarkChatUnread
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PrivacyTip
 import androidx.compose.material.icons.rounded.ScreenshotMonitor
 import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material.icons.rounded.Wallpaper
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -57,6 +66,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -67,13 +77,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.example.BuildConfig
 import com.example.model.AppLanguage
 import com.example.model.BlockedUser
 import com.example.model.ChatFontSize
@@ -83,12 +96,15 @@ import com.example.model.PublicProfile
 import com.example.model.ThemePreference
 import com.example.model.UploadState
 import com.example.model.UserPreferences
+import com.example.ui.components.BanglaChatLogoMark
+import com.example.ui.components.BanglaChatWordmark
 import com.example.ui.components.UserAvatar
 import com.example.ui.components.formatFullDate
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.BrandBlue
 import com.example.ui.theme.BrandPurple
 import com.example.ui.theme.DangerRed
+import com.example.ui.theme.OnlineGreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -119,6 +135,7 @@ fun SettingsTab(
     var showEditProfileSheet by remember { mutableStateOf(false) }
     var showPrivacySheet by remember { mutableStateOf(false) }
     var showBlockedSheet by remember { mutableStateOf(false) }
+    var showAppDetailsSheet by remember { mutableStateOf(false) }
     var showPinSetupDialog by remember { mutableStateOf(false) }
     var showLogoutDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -223,9 +240,9 @@ fun SettingsTab(
             }
         }
 
-        // Language & Theme Preferences
+        // Appearance & Chat Preferences
         item(key = "prefs_section") {
-            SettingsCardSection(title = strings.settingsPreferencesSection) {
+            SettingsCardSection(title = strings.settingsAppearanceSection) {
                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Rounded.Language, contentDescription = null, tint = BrandBlue)
@@ -341,23 +358,28 @@ fun SettingsTab(
             }
         }
 
-        // Notifications & Privacy
-        item(key = "privacy_section") {
-            SettingsCardSection(title = strings.settingsPrivacySection) {
+        // Notifications & Alerts
+        item(key = "notifications_section") {
+            SettingsCardSection(title = strings.settingsNotificationsSection) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Rounded.Notifications, contentDescription = null, tint = BrandBlue)
+                    SettingsLeadingBadge(
+                        icon = Icons.Rounded.Notifications,
+                        tint = if (notificationPermissionGranted) OnlineGreen else BrandBlue
+                    )
                     Spacer(modifier = Modifier.width(14.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(strings.enableNotifications, style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            text = if (notificationPermissionGranted) "Active" else "Tap to allow",
+                            text = if (notificationPermissionGranted) strings.notificationActiveStatus
+                            else strings.notificationTapToAllow,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (notificationPermissionGranted) OnlineGreen
+                            else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     if (!notificationPermissionGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -379,6 +401,11 @@ fun SettingsTab(
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    SettingsLeadingBadge(
+                        icon = Icons.Rounded.MarkChatUnread,
+                        tint = BrandPurple
+                    )
+                    Spacer(modifier = Modifier.width(14.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(strings.messagePreviewSetting, style = MaterialTheme.typography.bodyLarge)
                         Text(
@@ -392,11 +419,15 @@ fun SettingsTab(
                         onCheckedChange = onUpdateMessagePreview
                     )
                 }
+            }
+        }
 
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-
+        // Privacy & Security
+        item(key = "privacy_section") {
+            SettingsCardSection(title = strings.settingsSecuritySection) {
                 SettingsActionRow(
                     icon = Icons.Rounded.Security,
+                    tint = BrandBlue,
                     title = strings.privacySettings,
                     onClick = { showPrivacySheet = true },
                     testTag = "privacy_settings_row"
@@ -411,7 +442,7 @@ fun SettingsTab(
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Rounded.Lock, contentDescription = null, tint = BrandBlue)
+                    SettingsLeadingBadge(icon = Icons.Rounded.Lock, tint = BrandBlue)
                     Spacer(modifier = Modifier.width(14.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(strings.appLockSetting, style = MaterialTheme.typography.bodyLarge)
@@ -443,7 +474,7 @@ fun SettingsTab(
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Rounded.ScreenshotMonitor, contentDescription = null, tint = BrandPurple)
+                    SettingsLeadingBadge(icon = Icons.Rounded.ScreenshotMonitor, tint = BrandPurple)
                     Spacer(modifier = Modifier.width(14.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(strings.screenSecuritySetting, style = MaterialTheme.typography.bodyLarge)
@@ -464,6 +495,7 @@ fun SettingsTab(
 
                 SettingsActionRow(
                     icon = Icons.Rounded.Block,
+                    tint = DangerRed,
                     title = "${strings.blockedUsersSetting} (${blockedUsers.size})",
                     onClick = { showBlockedSheet = true },
                     testTag = "blocked_users_row"
@@ -471,42 +503,98 @@ fun SettingsTab(
             }
         }
 
-        // About, Policy, Terms & Support
+        // App Details, Developer Info & Support
         item(key = "support_section") {
-            SettingsCardSection(title = strings.settingsSupportSection) {
+            SettingsCardSection(title = strings.settingsAppDetailsSection) {
+                // Branded App Identity Summary Card
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showAppDetailsSheet = true }
+                        .padding(horizontal = 16.dp, vertical = 14.dp)
+                        .testTag("app_details_card")
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        BanglaChatLogoMark(size = 50.dp)
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                BanglaChatWordmark(fontSize = 20.sp)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = BrandBlue.copy(alpha = 0.14f)
+                                ) {
+                                    Text(
+                                        text = "v${BuildConfig.VERSION_NAME}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = BrandBlue,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(3.dp))
+                            Text(
+                                text = "${strings.appDeveloperLabel}: MH Ridoy",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "${BuildConfig.APPLICATION_ID} • Build ${BuildConfig.VERSION_CODE}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Rounded.ChevronRight,
+                            contentDescription = strings.viewFullAppDetails,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = strings.appFullDescription,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
                 SettingsActionRow(
                     icon = Icons.Rounded.Info,
-                    title = strings.aboutApp,
-                    onClick = {
-                        infoDialogContent = strings.aboutApp to
-                            "Bangla Chat v1.0\n\nNative Android messaging application built with Kotlin, Jetpack Compose, Material 3, Firebase Authentication, Cloud Firestore, Cloudinary Media Storage, and Firebase Cloud Messaging.\n\nPackage: com.mhridoy.banglacha"
-                    }
+                    tint = BrandBlue,
+                    title = strings.viewFullAppDetails,
+                    testTag = "view_app_details_row",
+                    onClick = { showAppDetailsSheet = true }
                 )
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                 SettingsActionRow(
                     icon = Icons.Rounded.PrivacyTip,
+                    tint = BrandPurple,
                     title = strings.privacyPolicy,
                     onClick = {
-                        infoDialogContent = strings.privacyPolicy to
-                            "Bangla Chat isolates your private email, phone number, and notification tokens in an owner-only Firestore document protected by zero-trust Security Rules. Public discovery only exposes fields you explicitly choose to share. Messages are transmitted over TLS via Firebase Cloud Firestore and are not claimed to be end-to-end encrypted."
+                        infoDialogContent = strings.privacyPolicy to strings.privacyPolicyBody
                     }
                 )
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                 SettingsActionRow(
                     icon = Icons.Rounded.Description,
+                    tint = BrandBlue,
                     title = strings.termsAndConditions,
                     onClick = {
-                        infoDialogContent = strings.termsAndConditions to
-                            "Use Bangla Chat respectfully. Harassment, impersonation, and spam are prohibited. You can block or report abusive accounts directly from any profile or conversation."
+                        infoDialogContent = strings.termsAndConditions to strings.termsBody
                     }
                 )
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                 SettingsActionRow(
                     icon = Icons.AutoMirrored.Rounded.HelpOutline,
+                    tint = OnlineGreen,
                     title = strings.helpAndSupport,
                     onClick = {
-                        infoDialogContent = strings.helpAndSupport to
-                            "Need help with Bangla Chat?\n• Start chats from the Contacts tab by searching @username or phone.\n• Manage Online Status, Last Seen, Read Receipts, and Search Discovery under Privacy Settings.\n• Export or delete your account anytime from Account settings."
+                        infoDialogContent = strings.helpAndSupport to strings.helpSupportBody
                     }
                 )
             }
@@ -844,6 +932,139 @@ fun SettingsTab(
         )
     }
 
+    // Full App Details Modal Bottom Sheet
+    if (showAppDetailsSheet) {
+        val isBangla = preferences.language == AppLanguage.BANGLA
+        val features = if (isBangla) {
+            listOf(
+                "রিয়েল-টাইম ব্যক্তিগত চ্যাট ও গ্রুপ মেসেজিং",
+                "লাইভ HD অডিও ও ভিডিও কল (কথার সময়সহ চ্যাটে কল রেকর্ড)",
+                "মেসেজ এডিট, রিপ্লাই, রিঅ্যাকশন, পিন ও আমার জন্য মুছুন",
+                "ভয়েস নোট, ছবি, ডকুমেন্ট ও ২৪ ঘণ্টার স্ট্যাটাস স্টোরি",
+                "স্মার্ট DeepSeek AI চ্যাট, অনুবাদ, রাইটার ও সারসংক্ষেপ",
+                "৪-ডিজিট অ্যাপ লক পিন, স্ক্রিনশট ব্লক ও জিরো-ট্রাস্ট নিরাপত্তা"
+            )
+        } else {
+            listOf(
+                "Real-time 1-on-1 & Group Messaging",
+                "Live HD WebRTC Audio & Video Calls with In-Chat Duration Logs",
+                "Message Edit, Reply, Reactions, Pinning & Delete-for-Me",
+                "Voice Notes, Photo/Document Sharing & 24h Status Stories",
+                "Built-in DeepSeek AI Assistant, Translation, Writer & Summary",
+                "4-Digit App Lock PIN, Screenshot Shield & Zero-Trust Security"
+            )
+        }
+
+        ModalBottomSheet(onDismissRequest = { showAppDetailsSheet = false }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    BanglaChatLogoMark(size = 56.dp)
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column {
+                        BanglaChatWordmark(fontSize = 24.sp)
+                        Text(
+                            text = "${strings.appVersionLabel}: v${BuildConfig.VERSION_NAME} (Build ${BuildConfig.VERSION_CODE})",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = BrandBlue,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+
+                Text(
+                    text = strings.appFullDescription,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        AppDetailMetadataRow(
+                            icon = Icons.Rounded.Verified,
+                            tint = BrandBlue,
+                            label = strings.appNameLabel,
+                            value = strings.appTitle
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        AppDetailMetadataRow(
+                            icon = Icons.Rounded.Person,
+                            tint = BrandPurple,
+                            label = strings.appDeveloperLabel,
+                            value = "MH Ridoy (ridoy013393-tech)"
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        AppDetailMetadataRow(
+                            icon = Icons.Rounded.Info,
+                            tint = OnlineGreen,
+                            label = strings.appVersionLabel,
+                            value = "v${BuildConfig.VERSION_NAME} (Build ${BuildConfig.VERSION_CODE})"
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        AppDetailMetadataRow(
+                            icon = Icons.Rounded.Code,
+                            tint = BrandBlue,
+                            label = strings.appPackageLabel,
+                            value = BuildConfig.APPLICATION_ID
+                        )
+                    }
+                }
+
+                Text(
+                    text = strings.appFeaturesTitle,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = BrandPurple
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    features.forEach { feat ->
+                        Row(verticalAlignment = Alignment.Top) {
+                            Icon(
+                                imageVector = Icons.Rounded.CheckCircle,
+                                contentDescription = null,
+                                tint = OnlineGreen,
+                                modifier = Modifier
+                                    .padding(top = 2.dp)
+                                    .size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = feat,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+                Button(
+                    onClick = { showAppDetailsSheet = false },
+                    shape = RoundedCornerShape(22.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                ) {
+                    Text(strings.close)
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
+    }
+
     // Info / Policy / Support Dialog
     infoDialogContent?.let { (title, body) ->
         AlertDialog(
@@ -860,6 +1081,60 @@ fun SettingsTab(
 }
 
 @Composable
+private fun SettingsLeadingBadge(
+    icon: ImageVector,
+    tint: Color
+) {
+    Box(
+        modifier = Modifier
+            .size(38.dp)
+            .clip(CircleShape)
+            .background(tint.copy(alpha = 0.14f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(20.dp)
+        )
+    }
+}
+
+@Composable
+private fun AppDetailMetadataRow(
+    icon: ImageVector,
+    tint: Color,
+    label: String,
+    value: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
+
+@Composable
 private fun SettingsCardSection(
     title: String,
     content: @Composable () -> Unit
@@ -868,6 +1143,7 @@ private fun SettingsCardSection(
         Text(
             text = title,
             style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
             color = BrandPurple,
             modifier = Modifier.padding(start = 6.dp, bottom = 6.dp)
         )
@@ -895,10 +1171,10 @@ private fun SettingsActionRow(
             .fillMaxWidth()
             .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = null, tint = tint)
+        SettingsLeadingBadge(icon = icon, tint = tint)
         Spacer(modifier = Modifier.width(14.dp))
         Text(
             text = title,

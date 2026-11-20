@@ -34,6 +34,7 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.ChatBubble
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Group
@@ -42,10 +43,12 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
@@ -89,6 +92,7 @@ import com.example.ui.theme.BrandBlue
 import com.example.ui.theme.BrandPurple
 import com.example.viewmodel.MainViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     viewModel: MainViewModel,
@@ -120,6 +124,7 @@ fun HomeScreen(
     var selectedChatFilter by rememberSaveable { mutableStateOf(ChatListFilter.ALL) }
     var searchExpanded by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
+    var showNewActionSheet by remember { mutableStateOf(false) }
     var showCreateGroupDialog by remember { mutableStateOf(false) }
     var showCreateStatusDialog by remember { mutableStateOf(false) }
     var viewingStories by remember { mutableStateOf<List<StatusStory>?>(null) }
@@ -225,18 +230,6 @@ fun HomeScreen(
                                         contentDescription = strings.aiAssistantTitle,
                                         tint = BrandPurple
                                     )
-                                }
-                                if (selectedTab == HomeTab.CHATS) {
-                                    IconButton(
-                                        onClick = { showCreateGroupDialog = true },
-                                        modifier = Modifier.testTag("home_new_group_button")
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Rounded.GroupAdd,
-                                            contentDescription = strings.newGroup,
-                                            tint = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
                                 }
                                 IconButton(
                                     onClick = {
@@ -393,7 +386,7 @@ fun HomeScreen(
                 floatingActionButton = {
                     if (selectedTab == HomeTab.CHATS) {
                         FloatingActionButton(
-                            onClick = { selectedTab = HomeTab.CONTACTS },
+                            onClick = { showNewActionSheet = true },
                             containerColor = BrandBlue,
                             contentColor = Color.White,
                             shape = CircleShape,
@@ -434,8 +427,7 @@ fun HomeScreen(
                             onExploreContacts = { selectedTab = HomeTab.CONTACTS },
                             onCreateGroupClick = { showCreateGroupDialog = true },
                             onAddStatusClick = { showCreateStatusDialog = true },
-                            onOpenAuthorStatuses = { stories -> viewingStories = stories },
-                            onOpenAiAssistant = onOpenAiAssistant
+                            onOpenAuthorStatuses = { stories -> viewingStories = stories }
                         )
 
                         HomeTab.CONTACTS -> ContactsTab(
@@ -462,6 +454,7 @@ fun HomeScreen(
                         HomeTab.CALLS -> CallsTab(
                             callLogs = callLogs,
                             discoverableProfiles = discoverableProfiles,
+                            language = preferences.language,
                             onStartCall = onStartCall
                         )
 
@@ -510,6 +503,126 @@ fun HomeScreen(
                         )
                     }
                 }
+            }
+        }
+    }
+
+    if (showNewActionSheet) {
+        ModalBottomSheet(onDismissRequest = { showNewActionSheet = false }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = strings.newActionSheetTitle,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(18.dp))
+                        .clickable {
+                            showNewActionSheet = false
+                            selectedTab = HomeTab.CONTACTS
+                        }
+                        .testTag("new_action_chat_row")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(BrandBlue.copy(alpha = 0.16f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.ChatBubble,
+                                contentDescription = strings.newChat,
+                                tint = BrandBlue
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = strings.newChat,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = strings.newChatSubtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Rounded.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(18.dp))
+                        .clickable {
+                            showNewActionSheet = false
+                            showCreateGroupDialog = true
+                        }
+                        .testTag("new_action_group_row")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(BrandPurple.copy(alpha = 0.16f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.GroupAdd,
+                                contentDescription = strings.newGroup,
+                                tint = BrandPurple
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = strings.newGroup,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = strings.newGroupSubtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Rounded.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
             }
         }
     }

@@ -47,10 +47,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.model.AppLanguage
 import com.example.model.CallFilter
 import com.example.model.CallLog
 import com.example.model.PublicProfile
 import com.example.ui.components.UserAvatar
+import com.example.ui.components.formatCallDuration
 import com.example.ui.components.formatConversationTime
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.BrandBlue
@@ -62,6 +64,7 @@ import com.example.ui.theme.OnlineGreen
 fun CallsTab(
     callLogs: List<CallLog>,
     discoverableProfiles: List<PublicProfile>,
+    language: AppLanguage,
     onStartCall: (PublicProfile, String) -> Unit
 ) {
     val strings = LocalAppStrings.current
@@ -310,15 +313,19 @@ fun CallsTab(
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
-                                val durationSuffix = if (log.durationSeconds > 0L) {
-                                    val mins = log.durationSeconds / 60L
-                                    val secs = log.durationSeconds % 60L
-                                    " • ${String.format("%02d:%02d", mins, secs)}"
-                                } else ""
+                                val callTypeLabel = if (log.callType == "video") strings.callVideoLabel else strings.callAudioLabel
+                                val formattedDuration = formatCallDuration(log.durationSeconds, language)
+                                val detailPart = when {
+                                    formattedDuration.isNotBlank() -> "$formattedDuration ${strings.callTalkedSuffix}"
+                                    log.direction == "missed" -> strings.callsFilterMissed
+                                    else -> strings.callNoAnswerLabel
+                                }
                                 Text(
-                                    text = "${formatConversationTime(log.createdAt)}$durationSuffix",
+                                    text = "$callTypeLabel • $detailPart • ${formatConversationTime(log.createdAt)}",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }

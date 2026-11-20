@@ -645,3 +645,148 @@ test("Unique @username registry: enforces uniqueness, allows exact get lookup, b
     bobDb.collection("usernames").doc("ridoy1234").set({ uid: BOB_UID, createdAt: pastDate(200) })
   );
 });
+
+test("In-chat call event messages & Delete-for-me (deletedFor) isolation", async () => {
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID).firestore();
+  const charlieDb = testEnv.authenticatedContext(CHARLIE_UID).firestore();
+  const chatId = `${ALICE_UID}_${BOB_UID}`;
+  const now = pastDate(2000);
+
+  // Create direct chat between Alice and Bob
+  await assertSucceeds(
+    aliceDb.collection("chats").doc(chatId).set({
+      participants: [ALICE_UID, BOB_UID],
+      participantNames: { [ALICE_UID]: "Alice", [BOB_UID]: "Bob" },
+      participantPhotos: { [ALICE_UID]: "", [BOB_UID]: "" },
+      lastMessage: "",
+      lastMessageType: "text",
+      lastSenderId: "",
+      lastMessageTime: now,
+      unreadCounts: { [ALICE_UID]: 0, [BOB_UID]: 0 },
+      typingUids: [],
+      createdBy: ALICE_UID,
+      createdAt: now,
+      updatedAt: now,
+    })
+  );
+
+  // 1. Alice sends a regular message; Bob hides it ONLY for himself via deletedFor
+  const msgRef = aliceDb.collection("chats").doc(chatId).collection("messages").doc("msg_peer_1");
+  await assertSucceeds(
+    msgRef.set({
+      chatId,
+      senderId: ALICE_UID,
+      senderName: "Alice",
+      participants: [ALICE_UID, BOB_UID],
+      text: "Hello Bob!",
+      type: "text",
+      delivered: false,
+      read: false,
+      deleted: false,
+      deletedFor: [],
+      edited: false,
+      forwarded: false,
+      reactions: {},
+      starredBy: [],
+      timestamp: now,
+      updatedAt: now,
+    })
+  );
+
+  // Bob CAN hide Alice's message for himself only
+  await assertSucceeds(
+    bobDb.collection("chats").doc(chatId).collection("messages").doc("msg_peer_1").update({
+      deletedFor: [BOB_UID],
+      updatedAt: pastDate(1000),
+    })
+  );
+
+  // Bob CANNOT edit text while hiding message for himself
+  await assertFails(
+    bobDb.collection("chats").doc(chatId).collection("messages").doc("msg_peer_1").update({
+      deletedFor: [BOB_UID],
+      text: "Tampered text",
+      updatedAt: pastDate(900),
+    })
+  );
+
+  // Alice CANNOT strip Bob's UID out of deletedFor when adding herself
+  await assertFails(
+    aliceDb.collection("chats").doc(chatId).collection("messages").doc("msg_peer_1").update({
+      deletedFor: [ALICE_UID],
+      updatedAt: pastDate(800),
+    })
+  );
+
+  // Alice CAN add herself while preserving Bob's UID
+  await assertSucceeds(
+    aliceDb.collection("chats").doc(chatId).collection("messages").doc("msg_peer_1").update({
+      deletedFor: [BOB_UID, ALICE_UID],
+      updatedAt: pastDate(700),
+    })
+  );
+
+  // Outsider Charlie CANNOT hide or modify deletedFor
+  await assertFails(
+    charlieDb.collection("chats").doc(chatId).collection("messages").doc("msg_peer_1").update({
+      deletedFor: [BOB_UID, ALICE_UID, CHARLIE_UID],
+      updatedAt: pastDate(600),
+    })
+  );
+
+  // 2. Alice logs an in-chat call event message with duration & updates chat preview
+  await assertSucceeds(
+    aliceDb.collection("chats").doc(chatId).collection("messages").doc("call_msg_1").set({
+      chatId,
+      senderId: ALICE_UID,
+      senderName: "Alice",
+      participants: [ALICE_UID, BOB_UID],
+      text: "অডিও কল • ২ মিনিট ১৫ সেকেন্ড",
+      type: "call",
+      callType: "audio",
+      callStatus: "answered",
+      callDurationSec: 135,
+      delivered: true,
+      read: false,
+      deleted: false,
+      deletedFor: [],
+      timestamp: pastDate(500),
+      updatedAt: pastDate(500),
+    })
+  );
+
+  await assertSucceeds(
+    aliceDb.collection("chats").doc(chatId).update({
+      lastMessage: "অডিও কল • ২ মিনিট ১৫ সেকেন্ড",
+      lastMessageType: "call",
+      lastSenderId: ALICE_UID,
+      lastMessageTime: pastDate(500),
+      unreadCounts: { [ALICE_UID]: 0, [BOB_UID]: 1 },
+      typingUids: [],
+      participantNames: { [ALICE_UID]: "Alice", [BOB_UID]: "Bob" },
+      participantPhotos: { [ALICE_UID]: "", [BOB_UID]: "" },
+      updatedAt: pastDate(500),
+    })
+  );
+
+  // Invalid call status or negative duration rejected
+  await assertFails(
+    aliceDb.collection("chats").doc(chatId).collection("messages").doc("call_msg_bad").set({
+      chatId,
+      senderId: ALICE_UID,
+      participants: [ALICE_UID, BOB_UID],
+      text: "Bad call",
+      type: "call",
+      callType: "audio",
+      callStatus: "hacked",
+      callDurationSec: -5,
+      delivered: true,
+      read: false,
+      deleted: false,
+      timestamp: pastDate(400),
+      updatedAt: pastDate(400),
+    })
+  );
+});
+

@@ -343,6 +343,45 @@ interface AppStrings {
     val createAccountSheetSubtitle: String
     val registerWithGoogle: String
     val registerWithPhone: String
+    // Delete for me / everyone
+    val deleteForMe: String
+    val deleteForEveryone: String
+    val deletedForMeToast: String
+    // In-chat call bubbles & history
+    val callAudioLabel: String
+    val callVideoLabel: String
+    val callOutgoingAudio: String
+    val callOutgoingVideo: String
+    val callIncomingAudio: String
+    val callIncomingVideo: String
+    val callMissedAudio: String
+    val callMissedVideo: String
+    val callDeclinedLabel: String
+    val callNoAnswerLabel: String
+    val callTalkedSuffix: String
+    val callTapToCallBack: String
+    // Pencil FAB action sheet
+    val newActionSheetTitle: String
+    val newChatSubtitle: String
+    val newGroupSubtitle: String
+    // Reorganized Settings & Complete App Details
+    val settingsAppearanceSection: String
+    val settingsNotificationsSection: String
+    val settingsSecuritySection: String
+    val settingsAppDetailsSection: String
+    val notificationActiveStatus: String
+    val notificationTapToAllow: String
+    val appDetailsTitle: String
+    val appNameLabel: String
+    val appVersionLabel: String
+    val appDeveloperLabel: String
+    val appPackageLabel: String
+    val appFeaturesTitle: String
+    val appFullDescription: String
+    val viewFullAppDetails: String
+    val privacyPolicyBody: String
+    val termsBody: String
+    val helpSupportBody: String
 }
 
 object BanglaStrings : AppStrings {
@@ -670,6 +709,41 @@ object BanglaStrings : AppStrings {
     override val createAccountSheetSubtitle = "পছন্দের মাধ্যম বেছে নিন। এরপর আপনার নাম, ফোন নম্বর ও ইউনিক @username দিয়ে অ্যাকাউন্ট সম্পন্ন হবে।"
     override val registerWithGoogle = "Google দিয়ে নতুন অ্যাকাউন্ট"
     override val registerWithPhone = "ফোন নম্বর (OTP) দিয়ে নতুন অ্যাকাউন্ট"
+    override val deleteForMe = "আমার জন্য মুছুন"
+    override val deleteForEveryone = "সবার জন্য মুছুন"
+    override val deletedForMeToast = "মেসেজটি শুধু আপনার চ্যাট থেকে মুছে ফেলা হয়েছে"
+    override val callAudioLabel = "অডিও কল"
+    override val callVideoLabel = "ভিডিও কল"
+    override val callOutgoingAudio = "আউটগোয়িং অডিও কল"
+    override val callOutgoingVideo = "আউটগোয়িং ভিডিও কল"
+    override val callIncomingAudio = "ইনকামিং অডিও কল"
+    override val callIncomingVideo = "ইনকামিং ভিডিও কল"
+    override val callMissedAudio = "মিসড অডিও কল"
+    override val callMissedVideo = "মিসড ভিডিও কল"
+    override val callDeclinedLabel = "কল বাতিল হয়েছে"
+    override val callNoAnswerLabel = "উত্তর পাওয়া যায়নি"
+    override val callTalkedSuffix = "কথা হয়েছে"
+    override val callTapToCallBack = "আবার কল করুন"
+    override val newActionSheetTitle = "নতুন কথোপকথন শুরু করুন"
+    override val newChatSubtitle = "ইউজারনেম খুঁজে ব্যক্তিগত চ্যাট শুরু করুন"
+    override val newGroupSubtitle = "একাধিক বন্ধু নিয়ে একসাথে গ্রুপ আড্ডা খুলুন"
+    override val settingsAppearanceSection = "থিম, ভাষা ও চ্যাট সাজসজ্জা"
+    override val settingsNotificationsSection = "নোটিফিকেশন ও সতর্কতা"
+    override val settingsSecuritySection = "গোপনীয়তা ও নিরাপত্তা"
+    override val settingsAppDetailsSection = "অ্যাপের তথ্য ও সহায়তা"
+    override val notificationActiveStatus = "চালু আছে"
+    override val notificationTapToAllow = "অনুমতি দিতে ট্যাপ করুন"
+    override val appDetailsTitle = "অ্যাপের সম্পূর্ণ তথ্য"
+    override val appNameLabel = "অ্যাপের নাম"
+    override val appVersionLabel = "ভার্সন"
+    override val appDeveloperLabel = "ডেভেলপার"
+    override val appPackageLabel = "প্যাকেজ আইডি"
+    override val appFeaturesTitle = "অ্যাপের মূল ফিচারসমূহ"
+    override val appFullDescription = "Bangla Chat একটি আধুনিক, দ্রুত ও নিরাপদ বাংলাদেশি মেসেজিং অ্যাপ — যেখানে রিয়েল-টাইম ব্যক্তিগত ও গ্রুপ চ্যাট, HD অডিও/ভিডিও কল, ভয়েস নোট, ছবি ও ফাইল শেয়ারিং, ২৪ ঘণ্টার স্ট্যাটাস স্টোরি এবং স্মার্ট DeepSeek AI সহায়তা একসাথে পাওয়া যায়।"
+    override val viewFullAppDetails = "সম্পূর্ণ ডিটেইলস দেখুন"
+    override val privacyPolicyBody = "Bangla Chat আপনার ব্যক্তিগত ইমেইল, ফোন নম্বর ও নোটিফিকেশন টোকেন একটি সুরক্ষিত owner-only Firestore ডকুমেন্টে আলাদা রাখে যা জিরো-ট্রাস্ট সিকিউরিটি রুলস দিয়ে সুরক্ষিত। পাবলিক প্রোফাইলে শুধু সেই তথ্যই দেখা যায় যা আপনি অনুমতি দিয়েছেন। সব মেসেজ TLS-এর মাধ্যমে Firebase Cloud Firestore-এ সুরক্ষিতভাবে আদান-প্রদান হয়।"
+    override val termsBody = "Bangla Chat সম্মানজনকভাবে ব্যবহার করুন। হয়রানি, ভুয়া পরিচয় বা স্প্যামিং সম্পূর্ণ নিষিদ্ধ। প্রয়োজনে যেকোনো চ্যাট বা প্রোফাইল থেকে সরাসরি ব্লক বা রিপোর্ট করতে পারবেন।"
+    override val helpSupportBody = "• বন্ধু খুঁজতে কন্টাক্ট ট্যাবে সঠিক @username লিখে সার্চ করুন।\n• নতুন চ্যাট বা নতুন গ্রুপ তৈরি করতে হোম স্ক্রিনের নিচের কলম (✏️) আইকনে ট্যাপ করুন।\n• অনলাইন স্ট্যাটাস, লাস্ট সিন, রিড রিসিপ্ট ও অ্যাপ লক পিন 'গোপনীয়তা ও নিরাপত্তা' সেকশন থেকে নিয়ন্ত্রণ করুন।\n• যেকোনো মেসেজ লং-প্রেস করে 'আমার জন্য মুছুন' দিয়ে শুধু নিজের চ্যাট থেকে সরাতে পারবেন।"
 }
 
 object EnglishStrings : AppStrings {
@@ -997,6 +1071,41 @@ object EnglishStrings : AppStrings {
     override val createAccountSheetSubtitle = "Choose your sign-up method, then complete your Name, Phone Number, and unique @username."
     override val registerWithGoogle = "Sign up with Google"
     override val registerWithPhone = "Sign up with Phone (OTP)"
+    override val deleteForMe = "Delete for me"
+    override val deleteForEveryone = "Delete for everyone"
+    override val deletedForMeToast = "Message deleted for you"
+    override val callAudioLabel = "Voice call"
+    override val callVideoLabel = "Video call"
+    override val callOutgoingAudio = "Outgoing voice call"
+    override val callOutgoingVideo = "Outgoing video call"
+    override val callIncomingAudio = "Incoming voice call"
+    override val callIncomingVideo = "Incoming video call"
+    override val callMissedAudio = "Missed voice call"
+    override val callMissedVideo = "Missed video call"
+    override val callDeclinedLabel = "Call declined"
+    override val callNoAnswerLabel = "No answer"
+    override val callTalkedSuffix = "talk time"
+    override val callTapToCallBack = "Tap to call back"
+    override val newActionSheetTitle = "Start Something New"
+    override val newChatSubtitle = "Find someone by @username to start a private chat"
+    override val newGroupSubtitle = "Create a group conversation with multiple friends"
+    override val settingsAppearanceSection = "Appearance & Chat"
+    override val settingsNotificationsSection = "Notifications & Alerts"
+    override val settingsSecuritySection = "Privacy & Security"
+    override val settingsAppDetailsSection = "App Details & Support"
+    override val notificationActiveStatus = "Active"
+    override val notificationTapToAllow = "Tap to allow"
+    override val appDetailsTitle = "Complete App Details"
+    override val appNameLabel = "App Name"
+    override val appVersionLabel = "Version"
+    override val appDeveloperLabel = "Developer"
+    override val appPackageLabel = "Package ID"
+    override val appFeaturesTitle = "Key Features"
+    override val appFullDescription = "Bangla Chat is a fast, modern, and secure messaging app featuring real-time private and group chats, HD WebRTC audio & video calls, voice notes, photo & document sharing, 24-hour status stories, and built-in DeepSeek AI assistance."
+    override val viewFullAppDetails = "View Full Details"
+    override val privacyPolicyBody = "Bangla Chat isolates your private email, phone number, and notification tokens in an owner-only Firestore document protected by zero-trust Security Rules. Public discovery only exposes fields you explicitly choose to share. Messages are transmitted securely over TLS via Firebase Cloud Firestore."
+    override val termsBody = "Use Bangla Chat respectfully. Harassment, impersonation, and spam are strictly prohibited. You can block or report abusive accounts directly from any profile or conversation."
+    override val helpSupportBody = "• Find friends in the Contacts tab by searching their exact @username.\n• Tap the pencil (✏️) button on the Chats screen to start a New Chat or create a New Group.\n• Manage Online Status, Last Seen, Read Receipts, App Lock PIN, and Screenshot Protection under Privacy & Security.\n• Long-press any message and tap 'Delete for me' to remove it only from your view."
 }
 
 fun stringsForLanguage(language: AppLanguage): AppStrings =

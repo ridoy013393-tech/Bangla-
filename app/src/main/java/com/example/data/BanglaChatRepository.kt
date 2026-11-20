@@ -439,7 +439,8 @@ class BanglaChatRepository(
                 snap.toObjects(
                     ChatMessage::class.java,
                     DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
-                ).sortedBy { it.timestamp ?: Timestamp(0, 0) }
+                ).filter { !it.isDeletedFor(currentUserId) }
+                    .sortedBy { it.timestamp ?: Timestamp(0, 0) }
             }
             .catch { error ->
                 val root = extractFirestoreRootError(error)
@@ -1004,6 +1005,131 @@ class BanglaChatRepository(
         }
     }
 
+    suspend fun logCallMessageInChat(
+        callerProfile: PublicProfile,
+        peerProfile: PublicProfile,
+        callType: String,
+        callStatus: String,
+        durationSeconds: Long
+    ): Result<Unit> {
+        val callerUid = callerProfile.uid
+        val peerUid = peerProfile.uid
+        if (callerUid.isBlank() || peerUid.isBlank() || callerUid == peerUid) {
+            return Result.success(Unit)
+        }
+        val chatId = buildChatId(callerUid, peerUid)
+        val messagesPath = "chats/$chatId/messages"
+        return try {
+            val uid = requireUserId()
+            check(uid == callerUid) { "Signed-in user mismatch" }
+
+            val chatResult = getOrCreateChat(callerProfile, peerProfile)
+            if (chatResult.isFailure) {
+                return Result.failure(chatResult.exceptionOrNull() ?: IllegalStateException("Unable to open chat"))
+            }
+
+            val chatRef = db.collection("chats").document(chatId)
+            val chatSnap = chatRef.get().await()
+            val existingChat = chatSnap.toObject(
+                Chat::class.java,
+                DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+            )
+            val participants = existingChat?.participants?.takeIf { it.size == 2 }
+                ?: listOf(callerUid, peerUid).sorted()
+            val safeCallType = if (callType == "video") "video" else "audio"
+            val safeCallStatus = when (callStatus) {
+                "answered", "declined", "missed" -> callStatus
+                else -> if (durationSeconds > 0L) "answered" else "missed"
+            }
+            val safeDuration = durationSeconds.coerceIn(0L, 86400L)
+
+            val typeLabel = if (safeCallType == "video") "ভিডিও কল" else "অডিও কল"
+            val summaryText = when {
+                safeCallStatus == "answered" && safeDuration > 0L -> {
+                    val durText = formatCallDurationBanglaCompact(safeDuration)
+                    "$typeLabel • $durText"
+                }
+                safeCallStatus == "declined" -> "$typeLabel • বাতিল"
+                else -> "মিসড $typeLabel"
+            }.take(500)
+
+            val senderDisplayName = callerProfile.name.ifBlank { "Bangla Chat User" }.take(60)
+            val msgRef = chatRef.collection("messages").document()
+            val messagePayload = mapOf(
+                "chatId" to chatId,
+                "senderId" to uid,
+                "senderName" to senderDisplayName,
+                "participants" to participants,
+                "text" to summaryText,
+                "type" to "call",
+                "callType" to safeCallType,
+                "callStatus" to safeCallStatus,
+                "callDurationSec" to safeDuration,
+                "delivered" to (safeCallStatus == "answered"),
+                "read" to (safeCallStatus == "answered"),
+                "deleted" to false,
+                "deletedFor" to emptyList<String>(),
+                "edited" to false,
+                "forwarded" to false,
+                "reactions" to emptyMap<String, String>(),
+                "starredBy" to emptyList<String>(),
+                "timestamp" to FieldValue.serverTimestamp(),
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            msgRef.set(messagePayload).await()
+
+            val updatedUnread = (existingChat?.unreadCounts ?: mapOf(callerUid to 0L, peerUid to 0L)).toMutableMap()
+            updatedUnread[uid] = 0L
+            if (safeCallStatus != "answered") {
+                updatedUnread[peerUid] = (updatedUnread[peerUid] ?: 0L) + 1L
+            }
+            val updatedNames = (existingChat?.participantNames ?: emptyMap()).toMutableMap().apply {
+                put(callerUid, senderDisplayName)
+                putIfAbsent(peerUid, peerProfile.name.ifBlank { "Bangla Chat User" }.take(60))
+            }
+            val updatedPhotos = (existingChat?.participantPhotos ?: emptyMap()).toMutableMap().apply {
+                put(callerUid, callerProfile.photoUrl.take(500))
+                putIfAbsent(peerUid, peerProfile.photoUrl.take(500))
+            }
+
+            chatRef.update(
+                mapOf(
+                    "lastMessage" to summaryText,
+                    "lastMessageType" to "call",
+                    "lastSenderId" to uid,
+                    "lastMessageTime" to FieldValue.serverTimestamp(),
+                    "unreadCounts" to updatedUnread,
+                    "typingUids" to (existingChat?.typingUids ?: emptyList()).filter { it != uid },
+                    "participantNames" to updatedNames,
+                    "participantPhotos" to updatedPhotos,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.CREATE, messagesPath)
+            Result.failure(e)
+        }
+    }
+
+    private fun formatCallDurationBanglaCompact(seconds: Long): String {
+        val bangla = charArrayOf('০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯')
+        fun bn(v: Long): String = v.toString().map { if (it in '0'..'9') bangla[it - '0'] else it }.joinToString("")
+        val hours = seconds / 3600L
+        val mins = (seconds % 3600L) / 60L
+        val secs = seconds % 60L
+        val parts = buildList {
+            if (hours > 0L) add("${bn(hours)} ঘণ্টা")
+            if (mins > 0L) add("${bn(mins)} মিনিট")
+            if (hours == 0L && secs > 0L) add("${bn(secs)} সেকেন্ড")
+            if (hours > 0L && mins == 0L && secs > 0L) add("${bn(secs)} সেকেন্ড")
+        }
+        return parts.joinToString(" ")
+    }
+
     suspend fun markConversationRead(
         chat: Chat,
         currentUserId: String,
@@ -1127,6 +1253,32 @@ class BanglaChatRepository(
                         "text" to "",
                         "mediaUrl" to "",
                         "mediaName" to "",
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                ).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteMessageForMe(
+        chatId: String,
+        messageId: String,
+        currentUserId: String
+    ): Result<Unit> {
+        val path = "chats/$chatId/messages/$messageId"
+        return try {
+            val uid = requireUserId()
+            check(uid == currentUserId) { "Signed-in user mismatch" }
+            db.collection("chats").document(chatId)
+                .collection("messages").document(messageId)
+                .update(
+                    mapOf(
+                        "deletedFor" to FieldValue.arrayUnion(uid),
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
                 ).await()

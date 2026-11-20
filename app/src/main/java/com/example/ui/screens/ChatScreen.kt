@@ -40,6 +40,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.CallMade
+import androidx.compose.material.icons.automirrored.rounded.CallMissed
+import androidx.compose.material.icons.automirrored.rounded.CallReceived
 import androidx.compose.material.icons.automirrored.rounded.Forward
 import androidx.compose.material.icons.automirrored.rounded.Reply
 import androidx.compose.material.icons.automirrored.rounded.Send
@@ -54,6 +57,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Done
 import androidx.compose.material.icons.rounded.DoneAll
@@ -127,6 +131,7 @@ import coil.compose.AsyncImage
 import com.example.data.VoiceNotePlayer
 import com.example.data.VoiceNoteRecorder
 import com.example.data.VoicePlaybackState
+import com.example.model.AppLanguage
 import com.example.model.Chat
 import com.example.model.ChatMessage
 import com.example.model.PublicProfile
@@ -134,6 +139,7 @@ import com.example.model.UiState
 import com.example.model.UploadState
 import com.example.model.UserPreferences
 import com.example.ui.components.UserAvatar
+import com.example.ui.components.formatCallDuration
 import com.example.ui.components.formatConversationTime
 import com.example.ui.components.formatFileSize
 import com.example.ui.components.formatMessageTime
@@ -1157,6 +1163,7 @@ fun ChatScreen(
                             MessageBubbleItem(
                                 message = msg,
                                 isMe = isMe,
+                                language = preferences.language,
                                 groupSenderName = resolvedSenderName,
                                 isStarred = msg.isStarredFor(viewModel.currentUserId),
                                 isSearchMatch = msg.id in searchMatchIds,
@@ -1172,7 +1179,18 @@ fun ChatScreen(
                                         scope = scope
                                     )
                                 },
-                                onLongClick = { if (!msg.deleted) selectedMessage = msg },
+                                onCallBackClick = { callType ->
+                                    if (!isGroupChat && peerUid.isNotBlank() && !isPeerBlocked) {
+                                        val targetPeer = peerProfile ?: PublicProfile(
+                                            uid = peerUid,
+                                            name = peerName,
+                                            photoUrl = peerPhoto
+                                        )
+                                        if (callType == "video") onStartVideoCall(targetPeer)
+                                        else onStartVoiceCall(targetPeer)
+                                    }
+                                },
+                                onLongClick = { selectedMessage = msg },
                                 onImageClick = { url -> fullscreenImageUrl = url },
                                 onDocumentClick = { url ->
                                     try {
@@ -1254,134 +1272,169 @@ fun ChatScreen(
         }
     }
 
-    // Long-press Message Action Sheet (React, Reply, Copy, Forward, Delete Own)
+    // Long-press Message Action Sheet (React, Reply, Copy, Forward, Delete for Me / Everyone)
     selectedMessage?.let { msg ->
+        val isRegularActiveMessage = !msg.deleted && msg.type != "call"
         ModalBottomSheet(onDismissRequest = { selectedMessage = null }) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 10.dp)
             ) {
-                // Quick Reaction Emoji Bar
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    QUICK_REACTIONS.forEach { emoji ->
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(CircleShape)
-                                .clickable {
-                                    viewModel.toggleReaction(msg, emoji)
-                                    selectedMessage = null
+                if (isRegularActiveMessage) {
+                    // Quick Reaction Emoji Bar
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        QUICK_REACTIONS.forEach { emoji ->
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        viewModel.toggleReaction(msg, emoji)
+                                        selectedMessage = null
+                                    }
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(text = emoji, fontSize = 22.sp)
                                 }
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(text = emoji, fontSize = 22.sp)
                             }
                         }
                     }
-                }
 
-                Spacer(modifier = Modifier.height(14.dp))
-                HorizontalDivider()
+                    Spacer(modifier = Modifier.height(14.dp))
+                    HorizontalDivider()
 
-                AttachOptionRow(
-                    icon = Icons.AutoMirrored.Rounded.Reply,
-                    tint = BrandBlue,
-                    label = strings.reply,
-                    onClick = {
-                        viewModel.setReplyTarget(msg)
-                        selectedMessage = null
-                    }
-                )
-                val isStarred = msg.isStarredFor(viewModel.currentUserId)
-                AttachOptionRow(
-                    icon = if (isStarred) Icons.Rounded.Star else Icons.Rounded.StarBorder,
-                    tint = Color(0xFFF59E0B),
-                    label = if (isStarred) strings.unstarMessage else strings.starMessage,
-                    onClick = {
-                        viewModel.toggleStarMessage(msg)
-                        selectedMessage = null
-                    }
-                )
-                val isCurrentlyPinned = chat?.pinnedMessageId == msg.id
-                AttachOptionRow(
-                    icon = Icons.Rounded.PushPin,
-                    tint = BrandBlue,
-                    label = if (isCurrentlyPinned) strings.unpinMessage else strings.pinMessage,
-                    onClick = {
-                        if (isCurrentlyPinned) {
-                            viewModel.unpinMessage()
-                        } else {
-                            val senderLabel = if (msg.senderId == viewModel.currentUserId) {
-                                effectiveMyProfile.name
-                            } else peerName
-                            viewModel.pinMessage(msg, senderLabel)
-                        }
-                        selectedMessage = null
-                    }
-                )
-                if (msg.senderId == viewModel.currentUserId && msg.type == "text" && msg.text.isNotBlank()) {
                     AttachOptionRow(
-                        icon = Icons.Rounded.Edit,
-                        tint = BrandPurple,
-                        label = strings.editMessage,
+                        icon = Icons.AutoMirrored.Rounded.Reply,
+                        tint = BrandBlue,
+                        label = strings.reply,
                         onClick = {
-                            viewModel.setEditingMessage(msg)
-                            messageText = msg.text
+                            viewModel.setReplyTarget(msg)
                             selectedMessage = null
                         }
                     )
-                }
-                if (msg.text.isNotBlank()) {
+                    val isStarred = msg.isStarredFor(viewModel.currentUserId)
                     AttachOptionRow(
-                        icon = Icons.Rounded.Translate,
-                        tint = BrandPurple,
-                        label = strings.aiTranslateAction,
-                        onClick = {
-                            viewModel.translateMessage(msg, preferences.language)
-                            selectedMessage = null
-                        }
-                    )
-                    AttachOptionRow(
-                        icon = Icons.Rounded.Lightbulb,
+                        icon = if (isStarred) Icons.Rounded.Star else Icons.Rounded.StarBorder,
                         tint = Color(0xFFF59E0B),
-                        label = strings.aiExplainAction,
+                        label = if (isStarred) strings.unstarMessage else strings.starMessage,
                         onClick = {
-                            viewModel.explainMessage(msg.text, preferences.language)
-                            showAiExplainSheet = true
+                            viewModel.toggleStarMessage(msg)
                             selectedMessage = null
                         }
                     )
+                    val isCurrentlyPinned = chat?.pinnedMessageId == msg.id
                     AttachOptionRow(
-                        icon = Icons.Rounded.ContentCopy,
-                        tint = MaterialTheme.colorScheme.onSurface,
-                        label = strings.copy,
+                        icon = Icons.Rounded.PushPin,
+                        tint = BrandBlue,
+                        label = if (isCurrentlyPinned) strings.unpinMessage else strings.pinMessage,
                         onClick = {
-                            clipboard.setText(AnnotatedString(msg.text))
+                            if (isCurrentlyPinned) {
+                                viewModel.unpinMessage()
+                            } else {
+                                val senderLabel = if (msg.senderId == viewModel.currentUserId) {
+                                    effectiveMyProfile.name
+                                } else peerName
+                                viewModel.pinMessage(msg, senderLabel)
+                            }
                             selectedMessage = null
-                            scope.launch { snackbarHostState.showSnackbar(strings.copiedToClipboard) }
+                        }
+                    )
+                    if (msg.senderId == viewModel.currentUserId && msg.type == "text" && msg.text.isNotBlank()) {
+                        AttachOptionRow(
+                            icon = Icons.Rounded.Edit,
+                            tint = BrandPurple,
+                            label = strings.editMessage,
+                            onClick = {
+                                viewModel.setEditingMessage(msg)
+                                messageText = msg.text
+                                selectedMessage = null
+                            }
+                        )
+                    }
+                    if (msg.text.isNotBlank()) {
+                        AttachOptionRow(
+                            icon = Icons.Rounded.Translate,
+                            tint = BrandPurple,
+                            label = strings.aiTranslateAction,
+                            onClick = {
+                                viewModel.translateMessage(msg, preferences.language)
+                                selectedMessage = null
+                            }
+                        )
+                        AttachOptionRow(
+                            icon = Icons.Rounded.Lightbulb,
+                            tint = Color(0xFFF59E0B),
+                            label = strings.aiExplainAction,
+                            onClick = {
+                                viewModel.explainMessage(msg.text, preferences.language)
+                                showAiExplainSheet = true
+                                selectedMessage = null
+                            }
+                        )
+                        AttachOptionRow(
+                            icon = Icons.Rounded.ContentCopy,
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            label = strings.copy,
+                            onClick = {
+                                clipboard.setText(AnnotatedString(msg.text))
+                                selectedMessage = null
+                                scope.launch { snackbarHostState.showSnackbar(strings.copiedToClipboard) }
+                            }
+                        )
+                    }
+                    AttachOptionRow(
+                        icon = Icons.AutoMirrored.Rounded.Forward,
+                        tint = BrandPurple,
+                        label = strings.forward,
+                        onClick = {
+                            forwardingMessage = msg
+                            selectedMessage = null
+                        }
+                    )
+                } else if (msg.type == "call" && !isGroupChat && peerUid.isNotBlank() && !isPeerBlocked) {
+                    val isVid = msg.callType == "video"
+                    AttachOptionRow(
+                        icon = if (isVid) Icons.Rounded.Videocam else Icons.Rounded.Call,
+                        tint = if (isVid) BrandBlue else OnlineGreen,
+                        label = strings.callTapToCallBack,
+                        onClick = {
+                            val targetPeer = peerProfile ?: PublicProfile(
+                                uid = peerUid,
+                                name = peerName,
+                                photoUrl = peerPhoto
+                            )
+                            selectedMessage = null
+                            if (isVid) onStartVideoCall(targetPeer)
+                            else onStartVoiceCall(targetPeer)
                         }
                     )
                 }
+
+                // Delete for Me — available on EVERY message (including peer's messages & call logs)
                 AttachOptionRow(
-                    icon = Icons.AutoMirrored.Rounded.Forward,
-                    tint = BrandPurple,
-                    label = strings.forward,
+                    icon = Icons.Rounded.DeleteOutline,
+                    tint = DangerRed,
+                    label = strings.deleteForMe,
+                    testTag = "delete_for_me_action",
                     onClick = {
-                        forwardingMessage = msg
+                        viewModel.deleteMessageForMe(msg, strings.deletedForMeToast)
                         selectedMessage = null
                     }
                 )
-                if (msg.senderId == viewModel.currentUserId) {
+
+                // Delete for Everyone — available for own non-deleted non-call messages
+                if (msg.senderId == viewModel.currentUserId && !msg.deleted && msg.type != "call") {
                     AttachOptionRow(
                         icon = Icons.Rounded.Delete,
                         tint = DangerRed,
-                        label = strings.deleteMessage,
+                        label = strings.deleteForEveryone,
+                        testTag = "delete_for_everyone_action",
                         onClick = {
                             viewModel.deleteOwnMessage(msg)
                             selectedMessage = null
@@ -1617,6 +1670,7 @@ fun ChatScreen(
 private fun MessageBubbleItem(
     message: ChatMessage,
     isMe: Boolean,
+    language: AppLanguage,
     groupSenderName: String,
     isStarred: Boolean,
     isSearchMatch: Boolean,
@@ -1625,12 +1679,135 @@ private fun MessageBubbleItem(
     isTranslating: Boolean,
     voicePlayback: VoicePlaybackState,
     onToggleVoicePlay: () -> Unit,
+    onCallBackClick: (String) -> Unit,
     onLongClick: () -> Unit,
     onImageClick: (String) -> Unit,
     onDocumentClick: (String) -> Unit
 ) {
     val strings = LocalAppStrings.current
     val isDark = MaterialTheme.colorScheme.background.red < 0.2f
+
+    // Dedicated in-chat Call Event Bubble (shows audio/video type, status, & exact talk time)
+    if (message.type == "call" && !message.deleted) {
+        val isVideo = message.callType == "video"
+        val isMissedForMe = message.callStatus == "missed" && !isMe
+        val isDeclined = message.callStatus == "declined"
+        val isUnanswered = message.callStatus == "missed" || isDeclined
+
+        val titleText = when {
+            isMissedForMe -> if (isVideo) strings.callMissedVideo else strings.callMissedAudio
+            isMe -> if (isVideo) strings.callOutgoingVideo else strings.callOutgoingAudio
+            else -> if (isVideo) strings.callIncomingVideo else strings.callIncomingAudio
+        }
+
+        val durationFormatted = formatCallDuration(message.callDurationSec, language)
+        val detailText = when {
+            message.callStatus == "answered" && durationFormatted.isNotBlank() ->
+                "$durationFormatted ${strings.callTalkedSuffix}"
+            isDeclined -> strings.callDeclinedLabel
+            isUnanswered -> strings.callNoAnswerLabel
+            else -> strings.callTapToCallBack
+        }
+
+        val accentColor = when {
+            isMissedForMe || isDeclined -> DangerRed
+            isVideo -> BrandBlue
+            else -> OnlineGreen
+        }
+        val dirIcon = when {
+            isMissedForMe || isDeclined -> Icons.AutoMirrored.Rounded.CallMissed
+            isMe -> Icons.AutoMirrored.Rounded.CallMade
+            else -> Icons.AutoMirrored.Rounded.CallReceived
+        }
+        val callBubbleBg = if (isDark) Color(0xFF1E293B) else Color(0xFFF8FAFC)
+        val callBorderColor = accentColor.copy(alpha = 0.35f)
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = if (isMe) Alignment.End else Alignment.Start
+        ) {
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = callBubbleBg,
+                tonalElevation = 1.dp,
+                shadowElevation = 1.dp,
+                modifier = Modifier
+                    .widthIn(min = 216.dp, max = 296.dp)
+                    .border(1.dp, callBorderColor, RoundedCornerShape(18.dp))
+                    .clip(RoundedCornerShape(18.dp))
+                    .combinedClickable(
+                        onClick = { onCallBackClick(if (isVideo) "video" else "audio") },
+                        onLongClick = onLongClick
+                    )
+                    .testTag("call_event_bubble_${message.id}")
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(accentColor.copy(alpha = 0.16f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isVideo) Icons.Rounded.Videocam else Icons.Rounded.Call,
+                            contentDescription = titleText,
+                            tint = accentColor,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = titleText,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isMissedForMe) DangerRed else MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = dirIcon,
+                                contentDescription = null,
+                                tint = accentColor,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = detailText,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = strings.callTapToCallBack,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = BrandBlue
+                            )
+                            Text(
+                                text = formatMessageTime(message.timestamp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        return
+    }
 
     val outgoingBrush = Brush.linearGradient(colors = listOf(BrandBlue, BrandPurple))
     val incomingBg = if (isDark) IncomingBubbleDark else IncomingBubbleLight
@@ -2000,11 +2177,13 @@ private fun AttachOptionRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     tint: Color,
     label: String,
+    testTag: String? = null,
     onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
             .clip(RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 14.dp),

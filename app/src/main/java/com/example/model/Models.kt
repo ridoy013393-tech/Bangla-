@@ -209,9 +209,13 @@ data class ChatMessage(
     val mediaName: String = "",
     val mediaSizeBytes: Long = 0L,
     val audioDurationSec: Long = 0L,
+    val callType: String = "",
+    val callStatus: String = "",
+    val callDurationSec: Long = 0L,
     val delivered: Boolean = false,
     val read: Boolean = false,
     val deleted: Boolean = false,
+    val deletedFor: List<String> = emptyList(),
     val edited: Boolean = false,
     val forwarded: Boolean = false,
     val replyToId: String = "",
@@ -224,6 +228,8 @@ data class ChatMessage(
     @ServerTimestamp val updatedAt: Timestamp? = null
 ) {
     fun isStarredFor(uid: String): Boolean = uid in starredBy
+
+    fun isDeletedFor(uid: String): Boolean = uid in deletedFor
 
     fun isExpiredNow(nowMillis: Long = System.currentTimeMillis()): Boolean {
         val exp = expiresAt ?: return false
