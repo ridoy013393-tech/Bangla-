@@ -183,6 +183,46 @@ class ExampleUnitTest {
                 remoteName = "1.5.1"
             )
         )
+        // Remote code 0 (from tag-only GitHub release like v1.9) still compares SemVer properly
+        assertTrue(
+            com.example.data.AppUpdateChecker.isUpdateNewer(
+                currentCode = 8,
+                currentName = "1.7",
+                remoteCode = 0,
+                remoteName = "1.9"
+            )
+        )
+
+        val parsedRelease = com.example.data.AppUpdateChecker.parseGitHubReleaseMetadata(
+            tagName = "latest-apk",
+            releaseName = "Bangla Chat v1.9 (Latest APK)",
+            bodyNotes = "Bangla Chat v1.9 (Build 9) — নতুন আপডেট",
+            apkUrl = "https://github.com/ridoy013393-tech/Bangla-/releases/download/latest-apk/BanglaChat.apk",
+            releaseUrl = "https://github.com/ridoy013393-tech/Bangla-/releases/tag/latest-apk"
+        )
+        assertTrue(parsedRelease != null)
+        assertEquals(9, parsedRelease!!.latestVersionCode)
+        assertEquals("1.9", parsedRelease.latestVersionName)
+        assertTrue(parsedRelease.forceUpdate)
+
+        val fsConfig = com.example.model.AppUpdateConfig(
+            active = true,
+            latestVersionCode = 10,
+            latestVersionName = "2.0",
+            forceUpdate = true,
+            apkUrl = "https://example.com/BanglaChat.apk"
+        )
+        val evaluated = com.example.data.AppUpdateChecker.evaluateFirestoreConfig(
+            config = fsConfig,
+            currentVersionCode = 9,
+            currentVersionName = "1.9"
+        )
+        assertTrue(evaluated != null)
+        assertEquals(10, evaluated!!.latestVersionCode)
+        assertEquals("2.0", evaluated.latestVersionName)
+
+        val winner = com.example.data.AppUpdateChecker.pickNewestUpdate(listOf(parsedRelease, evaluated))
+        assertEquals(10, winner?.latestVersionCode)
     }
 
     @Test

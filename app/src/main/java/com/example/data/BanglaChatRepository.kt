@@ -3,6 +3,7 @@ package com.example.data
 import android.content.Context
 import com.example.R
 import com.example.model.AppBroadcast
+import com.example.model.AppUpdateConfig
 import com.example.model.BlockedUser
 import com.example.model.CallLog
 import com.example.model.CallSession
@@ -2935,6 +2936,27 @@ class BanglaChatRepository(
             }
     }
 
+    fun observeAppUpdateConfig(): Flow<AppUpdateConfig?> {
+        val path = "appConfig/appUpdate"
+        return db.collection("appConfig").document("appUpdate")
+            .snapshots()
+            .map { snap ->
+                if (!snap.exists()) null
+                else snap.toObject(
+                    AppUpdateConfig::class.java,
+                    DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+                )
+            }
+            .catch { error ->
+                val root = extractFirestoreRootError(error)
+                if (root == null && error is CancellationException) throw error
+                if (root != null && auth.currentUser != null) {
+                    handleFirestoreError(root, OperationType.GET, path)
+                }
+                emit(null)
+            }
+    }
+
     suspend fun adminPublishBroadcast(
         active: Boolean,
         title: String,
@@ -3001,6 +3023,45 @@ class BanglaChatRepository(
                 "updatedAt" to FieldValue.serverTimestamp()
             )
             db.collection("appConfig").document("moderation").set(payload).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.WRITE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminSaveAppUpdateConfig(config: AppUpdateConfig): Result<Unit> {
+        val path = "appConfig/appUpdate"
+        return try {
+            requireUserId()
+            check(isCurrentUserSuperAdmin()) { "Admin privileges required" }
+            val adminEmail = auth.currentUser?.email.orEmpty().ifBlank { SUPER_ADMIN_EMAIL }.take(120)
+            val safeCode = config.latestVersionCode.coerceIn(1, 100000)
+            val safeName = config.latestVersionName.trim().take(32).ifBlank { "1.$safeCode" }
+            val safeApkUrl = config.apkUrl.trim().take(1000).ifBlank { AppUpdateChecker.FALLBACK_APK_URL }
+            val safeReleaseUrl = config.releaseUrl.trim().take(1000).ifBlank { AppUpdateChecker.FALLBACK_RELEASE_URL }
+            val safeNotes = config.releaseNotes.trim().take(1000)
+            val payload = mapOf(
+                "active" to config.active,
+                "latestVersionCode" to safeCode,
+                "latestVersionName" to safeName,
+                "forceUpdate" to config.forceUpdate,
+                "apkUrl" to safeApkUrl,
+                "releaseUrl" to safeReleaseUrl,
+                "releaseNotes" to safeNotes,
+                "updatedBy" to adminEmail,
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            db.collection("appConfig").document("appUpdate").set(payload).await()
+            TelegramNotifier.notifyModerationAction(
+                actionTitle = if (config.active) "🚀 ফোর্স আপডেট চালু (v$safeName / Build $safeCode)" else "⏸️ ফোর্স আপডেট বন্ধ করা হয়েছে",
+                targetUid = "ALL_USERS",
+                targetName = "Bangla Chat v$safeName",
+                targetUsername = "",
+                reason = safeNotes.ifBlank { safeApkUrl }
+            )
             Result.success(Unit)
         } catch (e: CancellationException) {
             throw e

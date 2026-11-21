@@ -1515,3 +1515,53 @@ test("v1.8 Group management, system events, admin moderation, deletion, and per-
   );
 });
 
+test("v1.9 Live Force-Update config (appConfig/appUpdate): Super Admin write-only, signed-in users read, strict schema", async () => {
+  const adminDb = testEnv.authenticatedContext("super_admin_uid", {
+    email: "mehedi0169019@gmail.com",
+    email_verified: true,
+  }).firestore();
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID, {
+    email: "alice@example.com",
+    email_verified: true,
+  }).firestore();
+  const unauthDb = testEnv.unauthenticatedContext().firestore();
+
+  const validUpdatePayload = {
+    active: true,
+    latestVersionCode: 10,
+    latestVersionName: "2.0",
+    forceUpdate: true,
+    apkUrl: "https://github.com/ridoy013393-tech/Bangla-/releases/download/latest-apk/BanglaChat.apk",
+    releaseUrl: "https://github.com/ridoy013393-tech/Bangla-/releases/latest",
+    releaseNotes: "Bangla Chat v2.0 — বাধ্যতামূলক আপডেট",
+    updatedBy: "mehedi0169019@gmail.com",
+    updatedAt: pastDate(1000),
+  };
+
+  // Regular user & unauthenticated user CANNOT write appUpdate config
+  await assertFails(aliceDb.collection("appConfig").doc("appUpdate").set(validUpdatePayload));
+  await assertFails(unauthDb.collection("appConfig").doc("appUpdate").set(validUpdatePayload));
+
+  // Super Admin CAN publish appUpdate config
+  await assertSucceeds(adminDb.collection("appConfig").doc("appUpdate").set(validUpdatePayload));
+
+  // Signed-in user CAN read appUpdate config; unauthenticated CANNOT
+  await assertSucceeds(aliceDb.collection("appConfig").doc("appUpdate").get());
+  await assertFails(unauthDb.collection("appConfig").doc("appUpdate").get());
+
+  // Invalid versionCode (0) or missing apkUrl rejected even for Super Admin
+  await assertFails(
+    adminDb.collection("appConfig").doc("appUpdate").set({
+      ...validUpdatePayload,
+      latestVersionCode: 0,
+    })
+  );
+  await assertFails(
+    adminDb.collection("appConfig").doc("appUpdate").set({
+      ...validUpdatePayload,
+      apkUrl: "bad",
+    })
+  );
+});
+
+

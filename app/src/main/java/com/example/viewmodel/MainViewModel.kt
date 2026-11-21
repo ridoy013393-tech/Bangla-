@@ -13,6 +13,7 @@ import com.example.data.UpdateCheckResult
 import com.example.data.extractFirestoreRootError
 import com.example.model.AppBroadcast
 import com.example.model.AppLanguage
+import com.example.model.AppUpdateConfig
 import com.example.model.BlockedUser
 import com.example.model.CallLog
 import com.example.model.CallSession
@@ -207,6 +208,15 @@ class MainViewModel(
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), ModerationSettings())
 
+    val appUpdateConfig: StateFlow<AppUpdateConfig?> =
+        repository.observeAppUpdateConfig()
+            .catch { error ->
+                val root = extractFirestoreRootError(error)
+                if (root == null && error is CancellationException) throw error
+                emit(null)
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
+
     private val _isPostingStatus = MutableStateFlow(false)
     val isPostingStatus: StateFlow<Boolean> = _isPostingStatus.asStateFlow()
 
@@ -215,6 +225,28 @@ class MainViewModel(
     private var usernameSearchJob: Job? = null
 
     private val bootstrapJob = bootstrapSession()
+
+    init {
+        viewModelScope.launch {
+            appUpdateConfig.collect { config ->
+                val liveUpdate = AppUpdateChecker.evaluateFirestoreConfig(config)
+                if (liveUpdate != null) {
+                    val current = (_updateCheckResult.value as? UpdateCheckResult.UpdateAvailable)?.info
+                    val winner = if (current != null) {
+                        AppUpdateChecker.pickNewestUpdate(listOf(current, liveUpdate)) ?: liveUpdate
+                    } else {
+                        liveUpdate
+                    }
+                    _updateCheckResult.value = UpdateCheckResult.UpdateAvailable(winner)
+                } else if (config != null && !config.active) {
+                    // If admin turned off Firestore force update, re-verify against GitHub
+                    if (_updateCheckResult.value is UpdateCheckResult.UpdateAvailable) {
+                        checkForAppUpdate(manual = false, forceRecheck = true)
+                    }
+                }
+            }
+        }
+    }
 
     private fun bootstrapSession() = viewModelScope.launch {
         val user = Firebase.auth.currentUser
@@ -654,14 +686,19 @@ class MainViewModel(
         }
     }
 
-    fun checkForAppUpdate(manual: Boolean = false, upToDateToast: String = "") {
-        if (!manual && autoUpdateChecked) return
+    fun checkForAppUpdate(
+        manual: Boolean = false,
+        upToDateToast: String = "",
+        forceRecheck: Boolean = false
+    ) {
+        if (!manual && !forceRecheck && autoUpdateChecked) return
         autoUpdateChecked = true
         viewModelScope.launch {
+            val previousUpdate = _updateCheckResult.value as? UpdateCheckResult.UpdateAvailable
             if (manual) {
                 _updateCheckResult.value = UpdateCheckResult.Checking
             }
-            when (val result = AppUpdateChecker.checkForUpdate()) {
+            when (val result = AppUpdateChecker.checkForUpdate(firestoreConfig = appUpdateConfig.value)) {
                 is UpdateCheckResult.UpdateAvailable -> {
                     _updateCheckResult.value = result
                 }
@@ -672,17 +709,20 @@ class MainViewModel(
                     }
                 }
                 is UpdateCheckResult.Failed -> {
-                    _updateCheckResult.value = UpdateCheckResult.Idle
+                    // Preserve any active mandatory update if network fails during a re-check
+                    _updateCheckResult.value = previousUpdate ?: UpdateCheckResult.Idle
                     if (manual) {
                         _snackbarEvents.tryEmit(result.message)
                     }
                 }
-                else -> _updateCheckResult.value = UpdateCheckResult.Idle
+                else -> _updateCheckResult.value = previousUpdate ?: UpdateCheckResult.Idle
             }
         }
     }
 
     fun dismissUpdateDialog() {
+        val active = _updateCheckResult.value as? UpdateCheckResult.UpdateAvailable
+        if (active?.info?.forceUpdate == true) return
         _updateCheckResult.value = UpdateCheckResult.Idle
     }
 
@@ -801,6 +841,17 @@ class MainViewModel(
             repository.adminUpdateModerationSettings(settings)
                 .onSuccess { _snackbarEvents.tryEmit(successToast) }
                 .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Filter settings update failed") }
+        }
+    }
+
+    fun adminSaveAppUpdateConfig(
+        config: AppUpdateConfig,
+        successToast: String
+    ) {
+        viewModelScope.launch {
+            repository.adminSaveAppUpdateConfig(config)
+                .onSuccess { _snackbarEvents.tryEmit(successToast) }
+                .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Update config save failed") }
         }
     }
 

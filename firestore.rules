@@ -382,6 +382,27 @@ service cloud.firestore {
              data.updatedAt is timestamp && data.updatedAt <= request.time;
     }
 
+    function isValidAppUpdateConfig(data) {
+      return data.keys().hasAll([
+               'active', 'latestVersionCode', 'latestVersionName',
+               'forceUpdate', 'apkUrl', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'active', 'latestVersionCode', 'latestVersionName',
+               'forceUpdate', 'apkUrl', 'releaseUrl', 'releaseNotes',
+               'updatedBy', 'updatedAt'
+             ]) &&
+             data.active is bool &&
+             data.latestVersionCode is int && data.latestVersionCode >= 1 && data.latestVersionCode <= 100000 &&
+             data.latestVersionName is string && data.latestVersionName.size() >= 1 && data.latestVersionName.size() <= 32 &&
+             data.forceUpdate is bool &&
+             data.apkUrl is string && data.apkUrl.size() >= 8 && data.apkUrl.size() <= 1000 &&
+             (!('releaseUrl' in data) || data.releaseUrl == null || (data.releaseUrl is string && data.releaseUrl.size() <= 1000)) &&
+             (!('releaseNotes' in data) || data.releaseNotes == null || (data.releaseNotes is string && data.releaseNotes.size() <= 1000)) &&
+             (!('updatedBy' in data) || data.updatedBy == null || (data.updatedBy is string && data.updatedBy.size() <= 120)) &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
     // --- PUBLIC PROFILES COLLECTION (NO PII) ---
 
     match /profiles/{uid} {
@@ -535,13 +556,14 @@ service cloud.firestore {
     // --- GLOBAL APP CONFIG (BROADCAST NOTICES & AUTO-MODERATION SETTINGS) ---
 
     match /appConfig/{configId} {
-      allow get: if isSignedIn() && configId in ['broadcast', 'moderation'];
+      allow get: if isSignedIn() && configId in ['broadcast', 'moderation', 'appUpdate'];
       allow list: if isSuperAdmin();
       allow create, update: if isSuperAdmin() && (
         (configId == 'broadcast' && isValidAppBroadcast(incoming())) ||
-        (configId == 'moderation' && isValidModerationSettings(incoming()))
+        (configId == 'moderation' && isValidModerationSettings(incoming())) ||
+        (configId == 'appUpdate' && isValidAppUpdateConfig(incoming()))
       );
-      allow delete: if isSuperAdmin() && configId in ['broadcast', 'moderation'];
+      allow delete: if isSuperAdmin() && configId in ['broadcast', 'moderation', 'appUpdate'];
     }
 
     // --- 24-HOUR STATUS STORIES ---

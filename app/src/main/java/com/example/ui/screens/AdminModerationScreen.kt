@@ -81,6 +81,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.model.AppBroadcast
 import com.example.model.AppLanguage
+import com.example.model.AppUpdateConfig
 import com.example.model.ModerationSettings
 import com.example.model.ModerationStatus
 import com.example.model.PublicProfile
@@ -223,6 +224,7 @@ fun AdminModerationScreen(
     reports: List<UserReport>,
     currentBroadcast: AppBroadcast?,
     currentModerationSettings: ModerationSettings,
+    currentAppUpdateConfig: AppUpdateConfig? = null,
     language: AppLanguage,
     onBanUser: (uid: String, name: String, username: String, reason: String) -> Unit,
     onMuteUser: (uid: String, name: String, username: String, hours: Long, reason: String) -> Unit,
@@ -231,6 +233,7 @@ fun AdminModerationScreen(
     onSetVerifiedBadge: (uid: String, name: String, username: String, verified: Boolean) -> Unit,
     onPublishBroadcast: (active: Boolean, title: String, message: String, severity: String) -> Unit,
     onSaveModerationSettings: (ModerationSettings) -> Unit,
+    onSaveAppUpdateConfig: (AppUpdateConfig) -> Unit = {},
     onDismissReport: (reportId: String) -> Unit,
     onBack: () -> Unit
 ) {
@@ -582,8 +585,10 @@ fun AdminModerationScreen(
                 AdminBroadcastAndFilterTab(
                     currentBroadcast = currentBroadcast,
                     currentModerationSettings = currentModerationSettings,
+                    currentAppUpdateConfig = currentAppUpdateConfig,
                     onPublishBroadcast = onPublishBroadcast,
-                    onSaveModerationSettings = onSaveModerationSettings
+                    onSaveModerationSettings = onSaveModerationSettings,
+                    onSaveAppUpdateConfig = onSaveAppUpdateConfig
                 )
             }
         }

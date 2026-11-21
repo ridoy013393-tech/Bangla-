@@ -24,6 +24,7 @@ import androidx.compose.material.icons.rounded.GppMaybe
 import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -49,8 +50,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.BuildConfig
+import com.example.data.AppUpdateChecker
 import com.example.data.ContentModerationEngine
 import com.example.model.AppBroadcast
+import com.example.model.AppUpdateConfig
 import com.example.model.ModerationSettings
 import com.example.ui.components.AdminBroadcastBanner
 import com.example.ui.i18n.LocalAppStrings
@@ -65,10 +69,41 @@ import com.example.ui.theme.OnlineGreen
 fun AdminBroadcastAndFilterTab(
     currentBroadcast: AppBroadcast?,
     currentModerationSettings: ModerationSettings,
+    currentAppUpdateConfig: AppUpdateConfig? = null,
     onPublishBroadcast: (active: Boolean, title: String, message: String, severity: String) -> Unit,
-    onSaveModerationSettings: (ModerationSettings) -> Unit
+    onSaveModerationSettings: (ModerationSettings) -> Unit,
+    onSaveAppUpdateConfig: (AppUpdateConfig) -> Unit = {}
 ) {
     val strings = LocalAppStrings.current
+
+    // App Update & Force Update Control state synced with Firestore
+    var updateGateActive by remember(currentAppUpdateConfig) {
+        mutableStateOf(currentAppUpdateConfig?.active == true)
+    }
+    var updateForceMandatory by remember(currentAppUpdateConfig) {
+        mutableStateOf(currentAppUpdateConfig?.forceUpdate ?: true)
+    }
+    var updateVersionCode by remember(currentAppUpdateConfig) {
+        mutableStateOf(
+            currentAppUpdateConfig?.latestVersionCode?.takeIf { it > 0 }?.toString()
+                ?: BuildConfig.VERSION_CODE.toString()
+        )
+    }
+    var updateVersionName by remember(currentAppUpdateConfig) {
+        mutableStateOf(
+            currentAppUpdateConfig?.latestVersionName?.ifBlank { BuildConfig.VERSION_NAME }
+                ?: BuildConfig.VERSION_NAME
+        )
+    }
+    var updateApkUrl by remember(currentAppUpdateConfig) {
+        mutableStateOf(
+            currentAppUpdateConfig?.apkUrl?.ifBlank { AppUpdateChecker.FALLBACK_APK_URL }
+                ?: AppUpdateChecker.FALLBACK_APK_URL
+        )
+    }
+    var updateNotes by remember(currentAppUpdateConfig) {
+        mutableStateOf(currentAppUpdateConfig?.releaseNotes.orEmpty())
+    }
 
     // Broadcast form state synced with Firestore
     var broadcastTitle by remember { mutableStateOf(currentBroadcast?.title.orEmpty()) }
@@ -483,6 +518,136 @@ fun AdminBroadcastAndFilterTab(
                         Icon(Icons.Rounded.Save, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(strings.adminSaveFilterAction, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        }
+
+        // 3. Live App Update & Mandatory Force Update Control Card
+        item(key = "app_update_control_card") {
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Rounded.SystemUpdate,
+                            contentDescription = null,
+                            tint = OnlineGreen,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = strings.adminAppUpdateSectionTitle,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = strings.adminAppUpdateSectionDesc,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    AdminFilterSwitchRow(
+                        title = strings.adminAppUpdateActiveToggle,
+                        subtitle = "${strings.forceUpdateCurrentVersionLabel}: v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                        checked = updateGateActive,
+                        onCheckedChange = { updateGateActive = it },
+                        testTag = "admin_update_active_switch"
+                    )
+
+                    AdminFilterSwitchRow(
+                        title = strings.adminAppUpdateForceToggle,
+                        subtitle = strings.forceUpdateDesc,
+                        checked = updateForceMandatory,
+                        onCheckedChange = { updateForceMandatory = it },
+                        testTag = "admin_update_force_switch"
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = updateVersionCode,
+                            onValueChange = { updateVersionCode = it.filter(Char::isDigit).take(6) },
+                            placeholder = { Text(strings.adminAppUpdateVersionCodeHint) },
+                            singleLine = true,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("admin_update_version_code_input")
+                        )
+                        OutlinedTextField(
+                            value = updateVersionName,
+                            onValueChange = { updateVersionName = it.take(32) },
+                            placeholder = { Text(strings.adminAppUpdateVersionNameHint) },
+                            singleLine = true,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("admin_update_version_name_input")
+                        )
+                    }
+
+                    OutlinedTextField(
+                        value = updateApkUrl,
+                        onValueChange = { updateApkUrl = it.take(1000) },
+                        placeholder = { Text(strings.adminAppUpdateApkUrlHint) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("admin_update_apk_url_input")
+                    )
+
+                    OutlinedTextField(
+                        value = updateNotes,
+                        onValueChange = { updateNotes = it.take(1000) },
+                        placeholder = { Text(strings.adminAppUpdateNotesHint) },
+                        minLines = 2,
+                        maxLines = 4,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("admin_update_notes_input")
+                    )
+
+                    Button(
+                        onClick = {
+                            val parsedCode = updateVersionCode.toIntOrNull()?.coerceAtLeast(1)
+                                ?: BuildConfig.VERSION_CODE
+                            onSaveAppUpdateConfig(
+                                AppUpdateConfig(
+                                    active = updateGateActive,
+                                    latestVersionCode = parsedCode,
+                                    latestVersionName = updateVersionName.trim().ifBlank { BuildConfig.VERSION_NAME },
+                                    forceUpdate = updateForceMandatory,
+                                    apkUrl = updateApkUrl.trim().ifBlank { AppUpdateChecker.FALLBACK_APK_URL },
+                                    releaseUrl = AppUpdateChecker.FALLBACK_RELEASE_URL,
+                                    releaseNotes = updateNotes.trim()
+                                )
+                            )
+                        },
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = OnlineGreen),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .testTag("admin_save_app_update_button")
+                    ) {
+                        Icon(Icons.Rounded.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(strings.adminAppUpdateSaveAction, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }

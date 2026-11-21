@@ -564,6 +564,28 @@ interface AppStrings {
     val groupOnlyAdminsCanManageHint: String
     val groupYouLabel: String
     val groupAdminDeleteMessage: String
+    // v1.9 Mandatory Force Update & Admin Update Manager
+    val forceUpdateTitle: String
+    val forceUpdateDesc: String
+    val forceUpdateCurrentVersionLabel: String
+    val forceUpdateNewVersionLabel: String
+    val forceUpdateDownloadApkButton: String
+    val forceUpdateOpenReleasePage: String
+    val forceUpdateCheckAgain: String
+    val forceUpdateNotesHeader: String
+    val forceUpdateDownloadStartedToast: String
+    val forceUpdateDownloadFailedToast: String
+    val forceUpdateAdminBypassButton: String
+    val adminAppUpdateSectionTitle: String
+    val adminAppUpdateSectionDesc: String
+    val adminAppUpdateActiveToggle: String
+    val adminAppUpdateForceToggle: String
+    val adminAppUpdateVersionCodeHint: String
+    val adminAppUpdateVersionNameHint: String
+    val adminAppUpdateApkUrlHint: String
+    val adminAppUpdateNotesHint: String
+    val adminAppUpdateSaveAction: String
+    val adminAppUpdateSavedToast: String
 }
 
 object BanglaStrings : AppStrings {
@@ -1100,6 +1122,27 @@ object BanglaStrings : AppStrings {
     override val groupOnlyAdminsCanManageHint = "শুধুমাত্র গ্রুপ ক্রিয়েটর বা অ্যাডমিন গ্রুপের নাম, ছবি, বিবরণ ও সদস্য পরিবর্তন করতে পারবেন।"
     override val groupYouLabel = "আপনি"
     override val groupAdminDeleteMessage = "সবার জন্য মুছুন (অ্যাডমিন)"
+    override val forceUpdateTitle = "নতুন আপডেট আবশ্যক!"
+    override val forceUpdateDesc = "Bangla Chat-এর নতুন ভার্সন প্রকাশিত হয়েছে। অ্যাপটি ব্যবহার চালিয়ে যেতে অনুগ্রহ করে এখনই নতুন APK ফাইলটি ডাউনলোড ও ইনস্টল করুন।"
+    override val forceUpdateCurrentVersionLabel = "বর্তমান ভার্সন"
+    override val forceUpdateNewVersionLabel = "নতুন ভার্সন"
+    override val forceUpdateDownloadApkButton = "এখনই আপডেট ডাউনলোড করুন (APK)"
+    override val forceUpdateOpenReleasePage = "ডাউনলোড পেজ খুলুন"
+    override val forceUpdateCheckAgain = "আবার চেক করুন"
+    override val forceUpdateNotesHeader = "নতুন আপডেটে যা থাকছে"
+    override val forceUpdateDownloadStartedToast = "নতুন আপডেট ফাইল ডাউনলোড শুরু হচ্ছে..."
+    override val forceUpdateDownloadFailedToast = "ডাউনলোড লিংক খোলা যায়নি। ব্রাউজার চেক করুন।"
+    override val forceUpdateAdminBypassButton = "সুপার অ্যাডমিন প্যানেল খুলুন"
+    override val adminAppUpdateSectionTitle = "অ্যাপ আপডেট ও ফোর্স আপডেট কন্ট্রোল"
+    override val adminAppUpdateSectionDesc = "নতুন ভার্সন প্রকাশ করলে পুরনো অ্যাপ ইউজাররা আপডেট না করা পর্যন্ত অ্যাপ চালাতে পারবে না।"
+    override val adminAppUpdateActiveToggle = "লাইভ ফোর্স আপডেট চালু করুন"
+    override val adminAppUpdateForceToggle = "আপডেট বাধ্যতামূলক (অ্যাপ লক)"
+    override val adminAppUpdateVersionCodeHint = "ভার্সন কোড (যেমন: 10)"
+    override val adminAppUpdateVersionNameHint = "ভার্সন নাম (যেমন: 2.0)"
+    override val adminAppUpdateApkUrlHint = "সরাসরি APK ডাউনলোড লিংক"
+    override val adminAppUpdateNotesHint = "আপডেট নোট / নতুন ফিচার..."
+    override val adminAppUpdateSaveAction = "আপডেট কনফিগ সেভ করুন"
+    override val adminAppUpdateSavedToast = "অ্যাপ আপডেট কনফিগ সংরক্ষিত হয়েছে"
 }
 
 object EnglishStrings : AppStrings {
@@ -1636,6 +1679,27 @@ object EnglishStrings : AppStrings {
     override val groupOnlyAdminsCanManageHint = "Only the group creator or admins can edit group details, manage members, or delete the group."
     override val groupYouLabel = "You"
     override val groupAdminDeleteMessage = "Delete for Everyone (Admin)"
+    override val forceUpdateTitle = "Update Required!"
+    override val forceUpdateDesc = "A newer version of Bangla Chat is available. You must download and install the latest APK to continue using the app."
+    override val forceUpdateCurrentVersionLabel = "Current Version"
+    override val forceUpdateNewVersionLabel = "New Version"
+    override val forceUpdateDownloadApkButton = "Download Update Now (APK)"
+    override val forceUpdateOpenReleasePage = "Open Download Page"
+    override val forceUpdateCheckAgain = "Check Again"
+    override val forceUpdateNotesHeader = "What's New"
+    override val forceUpdateDownloadStartedToast = "Starting APK file download..."
+    override val forceUpdateDownloadFailedToast = "Unable to open download link. Please check your browser."
+    override val forceUpdateAdminBypassButton = "Open Super Admin Panel"
+    override val adminAppUpdateSectionTitle = "App Update & Force Update Control"
+    override val adminAppUpdateSectionDesc = "Push a live update requirement so older app versions must download the new APK before using the app."
+    override val adminAppUpdateActiveToggle = "Enable Live Update Gate"
+    override val adminAppUpdateForceToggle = "Mandatory Update (Lock Old App)"
+    override val adminAppUpdateVersionCodeHint = "Version Code (e.g. 10)"
+    override val adminAppUpdateVersionNameHint = "Version Name (e.g. 2.0)"
+    override val adminAppUpdateApkUrlHint = "Direct APK Download URL"
+    override val adminAppUpdateNotesHint = "Release notes / changelog..."
+    override val adminAppUpdateSaveAction = "Save Update Config"
+    override val adminAppUpdateSavedToast = "App update config saved"
 }
 
 fun stringsForLanguage(language: AppLanguage): AppStrings =

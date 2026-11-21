@@ -70,13 +70,18 @@ jobs:
           cp app/build/outputs/apk/debug/app-debug.apk BanglaChat.apk
           V_CODE=$(grep -oE 'versionCode\s*=\s*[0-9]+' app/build.gradle.kts | head -n1 | grep -oE '[0-9]+')
           V_NAME=$(grep -oE 'versionName\s*=\s*"[^"]+"' app/build.gradle.kts | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
+          PUB_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "V_CODE=${V_CODE:-1}" >> "$GITHUB_ENV"
+          echo "V_NAME=${V_NAME:-1.0}" >> "$GITHUB_ENV"
           cat <<EOF > version.json
           {
             "versionCode": ${V_CODE:-1},
             "versionName": "${V_NAME:-1.0}",
+            "forceUpdate": true,
+            "publishedAt": "${PUB_AT}",
             "apkUrl": "https://github.com/${{ github.repository }}/releases/download/latest-apk/BanglaChat.apk",
             "releaseUrl": "https://github.com/${{ github.repository }}/releases/tag/latest-apk",
-            "notes": "Bangla Chat v${V_NAME:-1.0} — নতুন ফিচার ও পারফরম্যান্স আপডেট"
+            "notes": "Bangla Chat v${V_NAME:-1.0} — নতুন ফিচার, নিরাপত্তা ও পারফরম্যান্স আপডেট"
           }
           EOF
           cat version.json
@@ -91,8 +96,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-apk
-          name: Bangla Chat (Latest APK)
-          body: "Bangla Chat ইনস্টলযোগ্য Android APK — নিচের BanglaChat.apk ফাইলে ট্যাপ করে সরাসরি ফোনে ডাউনলোড ও ইনস্টল করুন।"
+          name: Bangla Chat v${{ env.V_NAME }} (Latest APK)
+          body: "Bangla Chat v${{ env.V_NAME }} (Build ${{ env.V_CODE }}) — নিচের BanglaChat.apk ফাইলে ট্যাপ করে সরাসরি ফোনে ডাউনলোড ও ইনস্টল করুন।"
           files: |
             BanglaChat.apk
             version.json

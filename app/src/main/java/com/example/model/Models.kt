@@ -405,3 +405,19 @@ data class ModerationSettings(
 ) {
     fun isMaskMode(): Boolean = profanityMode.equals("mask", ignoreCase = true)
 }
+
+@Keep
+@IgnoreExtraProperties
+data class AppUpdateConfig(
+    @DocumentId val id: String = "",
+    val active: Boolean = false,
+    val latestVersionCode: Int = 0,
+    val latestVersionName: String = "",
+    val forceUpdate: Boolean = true,
+    val apkUrl: String = "",
+    val releaseUrl: String = "",
+    val releaseNotes: String = "",
+    val updatedBy: String = "",
+    @ServerTimestamp val updatedAt: Timestamp? = null
+)
+

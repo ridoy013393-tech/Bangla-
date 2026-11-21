@@ -55,6 +55,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.data.AppUpdateChecker
 import com.example.data.NetworkMonitor
 import com.example.data.StorageRepository
 import com.example.data.UpdateCheckResult
@@ -80,6 +81,7 @@ import com.example.ui.screens.AppLockScreen
 import com.example.ui.screens.AuthEntryMode
 import com.example.ui.screens.AuthScreen
 import com.example.ui.screens.ChatScreen
+import com.example.ui.screens.ForceUpdateScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.IncomingCallBanner
 import com.example.ui.screens.LiveCallScreen
@@ -223,8 +225,28 @@ private fun BanglaChatAppRoot(
     var selectedAuthMode by rememberSaveable { mutableStateOf(AuthEntryMode.LOGIN) }
     var pendingPhoneHint by rememberSaveable { mutableStateOf("") }
 
+    // Pre-login GitHub Releases check so even logged-out old builds must update immediately
+    var preLoginUpdateState by remember { mutableStateOf<UpdateCheckResult>(UpdateCheckResult.Idle) }
+    var preLoginCheckNonce by remember { mutableIntStateOf(0) }
+    LaunchedEffect(currentUser, preLoginCheckNonce) {
+        if (currentUser == null) {
+            preLoginUpdateState = UpdateCheckResult.Checking
+            preLoginUpdateState = AppUpdateChecker.checkForUpdate()
+        }
+    }
+
     val user = currentUser
     if (user == null) {
+        val preLoginUpdate = (preLoginUpdateState as? UpdateCheckResult.UpdateAvailable)?.info
+        if (preLoginUpdate != null && preLoginUpdate.forceUpdate) {
+            ForceUpdateScreen(
+                info = preLoginUpdate,
+                isChecking = preLoginUpdateState is UpdateCheckResult.Checking,
+                isSuperAdmin = false,
+                onRecheck = { preLoginCheckNonce++ }
+            )
+            return
+        }
         AuthScreen(
             currentLanguage = preferences.language,
             onToggleLanguage = onSetLanguage,
@@ -490,6 +512,7 @@ private fun AuthenticatedBanglaChatHost(
     val adminAllReports by mainViewModel.adminAllReports.collectAsStateWithLifecycle()
     val appBroadcast by mainViewModel.appBroadcast.collectAsStateWithLifecycle()
     val moderationSettings by mainViewModel.moderationSettings.collectAsStateWithLifecycle()
+    val appUpdateConfig by mainViewModel.appUpdateConfig.collectAsStateWithLifecycle()
     val chatsState by mainViewModel.chatsState.collectAsStateWithLifecycle()
     val discoverableUsersState by mainViewModel.discoverableUsersState.collectAsStateWithLifecycle()
     val blockedUsers by mainViewModel.blockedUsers.collectAsStateWithLifecycle()
@@ -521,11 +544,46 @@ private fun AuthenticatedBanglaChatHost(
         return
     }
 
-    // Auto-check GitHub releases version.json once per session
+    // Auto-check Firestore + GitHub releases on launch and whenever app returns to foreground
     LaunchedEffect(currentUserId, isNetworkOnline) {
         if (isNetworkOnline) {
             mainViewModel.checkForAppUpdate(manual = false)
         }
+    }
+    val updateLifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(updateLifecycleOwner, isNetworkOnline) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && isNetworkOnline) {
+                mainViewModel.checkForAppUpdate(manual = false, forceRecheck = true)
+            }
+        }
+        updateLifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { updateLifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // Mandatory full-screen Force Update Gate — blocks entire app until the new APK is installed
+    val mandatoryUpdateInfo = (updateCheckResult as? UpdateCheckResult.UpdateAvailable)?.info
+        ?.takeIf { it.forceUpdate }
+    if (mandatoryUpdateInfo != null && !(isAdminPanelOpen && mainViewModel.isSuperAdmin)) {
+        LaunchedEffect(mandatoryUpdateInfo.latestVersionCode, mandatoryUpdateInfo.latestVersionName) {
+            BanglaChatRealtimeService.stop(context)
+        }
+        ForceUpdateScreen(
+            info = mandatoryUpdateInfo,
+            isChecking = updateCheckResult is UpdateCheckResult.Checking,
+            isSuperAdmin = mainViewModel.isSuperAdmin,
+            onRecheck = {
+                mainViewModel.checkForAppUpdate(
+                    manual = true,
+                    upToDateToast = strings.appUpToDateToast,
+                    forceRecheck = true
+                )
+            },
+            onOpenAdminPanel = if (mainViewModel.isSuperAdmin) {
+                { isAdminPanelOpen = true }
+            } else null
+        )
+        return
     }
 
     // WhatsApp-style foreground presence heartbeat every 45s so stale/offline devices never appear stuck online
@@ -642,6 +700,7 @@ private fun AuthenticatedBanglaChatHost(
                 reports = adminAllReports,
                 currentBroadcast = appBroadcast,
                 currentModerationSettings = moderationSettings,
+                currentAppUpdateConfig = appUpdateConfig,
                 language = preferences.language,
                 onBanUser = { uid, name, username, reason ->
                     mainViewModel.adminBanUser(uid, name, username, reason, strings.adminActionSuccessToast)
@@ -663,6 +722,9 @@ private fun AuthenticatedBanglaChatHost(
                 },
                 onSaveModerationSettings = { newSettings ->
                     mainViewModel.adminSaveModerationSettings(newSettings, strings.adminFilterSavedToast)
+                },
+                onSaveAppUpdateConfig = { newUpdateConfig ->
+                    mainViewModel.adminSaveAppUpdateConfig(newUpdateConfig, strings.adminAppUpdateSavedToast)
                 },
                 onDismissReport = { reportId ->
                     mainViewModel.adminDismissReport(reportId, strings.adminActionSuccessToast)
@@ -749,10 +811,10 @@ private fun AuthenticatedBanglaChatHost(
             }
         }
 
-        // In-App Update Available Dialog (opens direct APK release link via system browser)
-        val updateAvailable = updateCheckResult as? UpdateCheckResult.UpdateAvailable
-        if (updateAvailable != null) {
-            val info = updateAvailable.info
+        // Optional In-App Update Dialog (only shown if forceUpdate == false; mandatory updates use ForceUpdateScreen)
+        val optionalUpdate = (updateCheckResult as? UpdateCheckResult.UpdateAvailable)?.info
+            ?.takeIf { !it.forceUpdate }
+        if (optionalUpdate != null) {
             AlertDialog(
                 onDismissRequest = { mainViewModel.dismissUpdateDialog() },
                 icon = {
@@ -763,14 +825,14 @@ private fun AuthenticatedBanglaChatHost(
                     )
                 },
                 title = {
-                    Text("${strings.updateAvailableTitle} (v${info.latestVersionName})")
+                    Text("${strings.updateAvailableTitle} (v${optionalUpdate.latestVersionName})")
                 },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(strings.updateAvailableDesc)
-                        if (info.releaseNotes.isNotBlank()) {
+                        if (optionalUpdate.releaseNotes.isNotBlank()) {
                             Text(
-                                text = info.releaseNotes,
+                                text = optionalUpdate.releaseNotes,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -781,11 +843,7 @@ private fun AuthenticatedBanglaChatHost(
                     Button(
                         onClick = {
                             mainViewModel.dismissUpdateDialog()
-                            runCatching {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, Uri.parse(info.apkUrl))
-                                )
-                            }
+                            AppUpdateChecker.openDirectDownload(context, optionalUpdate)
                         }
                     ) {
                         Text(strings.updateDownloadNow)
