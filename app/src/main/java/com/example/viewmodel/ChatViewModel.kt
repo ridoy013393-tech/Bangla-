@@ -392,6 +392,79 @@ class ChatViewModel(
         }
     }
 
+    fun sendStickerMessage(senderProfile: PublicProfile, stickerId: String, stickerText: String) {
+        val currentChat = chat.value ?: return
+        val reply = _replyTarget.value
+        val replySender = reply?.let { r ->
+            if (r.senderId == currentUserId) senderProfile.name
+            else currentChat.participantNames[r.senderId].orEmpty()
+        }
+        _replyTarget.value = null
+        viewModelScope.launch {
+            repository.sendMessage(
+                chat = currentChat,
+                senderProfile = senderProfile,
+                text = stickerText,
+                type = "sticker",
+                stickerId = stickerId,
+                replyTo = reply,
+                replySenderName = replySender
+            ).onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Failed to send sticker") }
+        }
+    }
+
+    fun sendLocationMessage(
+        senderProfile: PublicProfile,
+        latitude: Double,
+        longitude: Double,
+        label: String
+    ) {
+        val currentChat = chat.value ?: return
+        val reply = _replyTarget.value
+        val replySender = reply?.let { r ->
+            if (r.senderId == currentUserId) senderProfile.name
+            else currentChat.participantNames[r.senderId].orEmpty()
+        }
+        _replyTarget.value = null
+        viewModelScope.launch {
+            repository.sendMessage(
+                chat = currentChat,
+                senderProfile = senderProfile,
+                text = label,
+                type = "location",
+                latitude = latitude,
+                longitude = longitude,
+                locationLabel = label,
+                replyTo = reply,
+                replySenderName = replySender
+            ).onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Failed to send location") }
+        }
+    }
+
+    fun sendContactCardMessage(senderProfile: PublicProfile, contact: PublicProfile) {
+        val currentChat = chat.value ?: return
+        val reply = _replyTarget.value
+        val replySender = reply?.let { r ->
+            if (r.senderId == currentUserId) senderProfile.name
+            else currentChat.participantNames[r.senderId].orEmpty()
+        }
+        _replyTarget.value = null
+        viewModelScope.launch {
+            repository.sendMessage(
+                chat = currentChat,
+                senderProfile = senderProfile,
+                text = "${contact.name} (@${contact.username})",
+                type = "contact",
+                sharedContactUid = contact.uid,
+                sharedContactName = contact.name,
+                sharedContactUsername = contact.username,
+                sharedContactPhotoUrl = contact.visiblePhotoUrl(),
+                replyTo = reply,
+                replySenderName = replySender
+            ).onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Failed to send contact") }
+        }
+    }
+
     fun voteOnPoll(message: ChatMessage, optionIndex: Int) {
         viewModelScope.launch {
             repository.voteOnPoll(chatId, message, currentUserId, optionIndex)
@@ -479,6 +552,14 @@ class ChatViewModel(
                 mediaUrl = original.mediaUrl.takeIf { it.isNotBlank() },
                 mediaName = original.mediaName.takeIf { it.isNotBlank() },
                 mediaSizeBytes = original.mediaSizeBytes.takeIf { it > 0L },
+                stickerId = original.stickerId.takeIf { it.isNotBlank() },
+                latitude = if (original.type == "location") original.latitude else null,
+                longitude = if (original.type == "location") original.longitude else null,
+                locationLabel = original.locationLabel.takeIf { it.isNotBlank() },
+                sharedContactUid = original.sharedContactUid.takeIf { it.isNotBlank() },
+                sharedContactName = original.sharedContactName.takeIf { it.isNotBlank() },
+                sharedContactUsername = original.sharedContactUsername.takeIf { it.isNotBlank() },
+                sharedContactPhotoUrl = original.sharedContactPhotoUrl.takeIf { it.isNotBlank() },
                 forwarded = true
             ).onSuccess {
                 _snackbarEvents.tryEmit(successMessage)

@@ -51,14 +51,18 @@ import androidx.compose.material.icons.automirrored.rounded.Reply
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.AddCircle
 import androidx.compose.material.icons.rounded.AdminPanelSettings
+import androidx.compose.material.icons.rounded.Alarm
 import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.AutoFixHigh
 import androidx.compose.material.icons.rounded.Block
+import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ContactPage
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteForever
@@ -69,10 +73,12 @@ import androidx.compose.material.icons.rounded.Done
 import androidx.compose.material.icons.rounded.DoneAll
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.EmojiEmotions
 import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Lightbulb
+import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.LooksOne
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MoreVert
@@ -143,6 +149,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.example.data.ChatSoundPlayer
+import com.example.data.LocationHelper
 import com.example.data.VoiceNotePlayer
 import com.example.data.VoiceNoteRecorder
 import com.example.data.VoicePlaybackState
@@ -154,6 +162,12 @@ import com.example.model.PublicProfile
 import com.example.model.UiState
 import com.example.model.UploadState
 import com.example.model.UserPreferences
+import com.example.service.MessageReminderScheduler
+import com.example.ui.components.BanglaSticker
+import com.example.ui.components.BanglaStickerCard
+import com.example.ui.components.BanglaStickerCatalog
+import com.example.ui.components.BanglaStickerPickerSheet
+import com.example.ui.components.LiveRecordingWaveform
 import com.example.ui.components.UserAvatar
 import com.example.ui.components.VerifiedBadge
 import com.example.ui.components.formatCallDuration
@@ -192,7 +206,9 @@ fun ChatScreen(
     onBlockPeer: (PublicProfile) -> Unit,
     onUnblockPeer: (String) -> Unit,
     onReportPeer: (String, String, String) -> Unit,
-    onOpenDirectChatWithMember: (PublicProfile) -> Unit = {}
+    onOpenDirectChatWithMember: (PublicProfile) -> Unit = {},
+    onAddCustomQuickReply: (String) -> Unit = {},
+    onRemoveCustomQuickReply: (String) -> Unit = {}
 ) {
     BackHandler(onBack = onBack)
 
@@ -255,6 +271,11 @@ fun ChatScreen(
     var showLeaveGroupConfirm by remember { mutableStateOf(false) }
     var showDeleteGroupConfirm by remember { mutableStateOf(false) }
     var activeViewOnceMessage by remember { mutableStateOf<ChatMessage?>(null) }
+    var showStickerSheet by remember { mutableStateOf(false) }
+    var showQuickReplySheet by remember { mutableStateOf(false) }
+    var showShareLocationSheet by remember { mutableStateOf(false) }
+    var showShareContactSheet by remember { mutableStateOf(false) }
+    var reminderTargetMessage by remember { mutableStateOf<ChatMessage?>(null) }
     var inChatSearchOpen by remember { mutableStateOf(false) }
     var inChatSearchQuery by remember { mutableStateOf("") }
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
@@ -263,9 +284,12 @@ fun ChatScreen(
         uid = viewModel.currentUserId,
         name = "Bangla Chat User"
     )
-    val isGroupChat = chat?.isGroup == true
+    val isSelfChat = chat?.isSavedMessagesChat(viewModel.currentUserId) == true ||
+        viewModel.chatId == "saved_${viewModel.currentUserId}"
+    val isGroupChat = !isSelfChat && chat?.isGroup == true
     val isGroupAdmin = isGroupChat && chat?.isAdmin(viewModel.currentUserId) == true
     val canDeleteGroup = isGroupChat && (isGroupAdmin || chat?.participants == listOf(viewModel.currentUserId))
+    val activeStreak = if (isSelfChat) 0 else (chat?.activeStreak() ?: 0)
     var wasLoadedGroup by remember(viewModel.chatId) { mutableStateOf(false) }
     var selfExitedGroup by remember(viewModel.chatId) { mutableStateOf(false) }
 
@@ -281,24 +305,24 @@ fun ChatScreen(
         }
     }
 
-    val peerUid = chat?.peerUid(viewModel.currentUserId).orEmpty()
-    val peerName = if (isGroupChat) {
-        chat?.groupName?.ifBlank { strings.newGroup } ?: strings.newGroup
-    } else {
-        peerProfile?.name?.ifBlank { chat?.peerName(viewModel.currentUserId).orEmpty() }
+    val peerUid = if (isSelfChat) "" else chat?.peerUid(viewModel.currentUserId).orEmpty()
+    val peerName = when {
+        isSelfChat -> strings.savedMessagesTitle
+        isGroupChat -> chat?.groupName?.ifBlank { strings.newGroup } ?: strings.newGroup
+        else -> peerProfile?.name?.ifBlank { chat?.peerName(viewModel.currentUserId).orEmpty() }
             ?: chat?.peerName(viewModel.currentUserId).orEmpty().ifBlank { "Bangla Chat" }
     }
-    val peerPhoto = if (isGroupChat) {
-        chat?.groupPhotoUrl.orEmpty()
-    } else {
-        peerProfile?.let { it.visiblePhotoUrl() }
+    val peerPhoto = when {
+        isSelfChat -> ""
+        isGroupChat -> chat?.groupPhotoUrl.orEmpty()
+        else -> peerProfile?.let { it.visiblePhotoUrl() }
             ?: chat?.peerPhotoUrl(viewModel.currentUserId).orEmpty()
     }
-    val isPeerBlocked = !isGroupChat && peerUid.isNotBlank() && peerUid in blockedUids
-    val isPeerTyping = if (isGroupChat) {
-        chat?.typingUids?.any { it != viewModel.currentUserId } == true
-    } else {
-        peerUid.isNotBlank() && chat?.typingUids?.contains(peerUid) == true
+    val isPeerBlocked = !isGroupChat && !isSelfChat && peerUid.isNotBlank() && peerUid in blockedUids
+    val isPeerTyping = when {
+        isSelfChat -> false
+        isGroupChat -> chat?.typingUids?.any { it != viewModel.currentUserId } == true
+        else -> peerUid.isNotBlank() && chat?.typingUids?.contains(peerUid) == true
     }
 
     val audioPermissionLauncher = rememberLauncherForActivityResult(
@@ -414,6 +438,22 @@ fun ChatScreen(
         }
     }
 
+    // Play soft incoming chime when a new message from another user arrives while viewing this chat
+    var lastObservedMsgId by remember(viewModel.chatId) { mutableStateOf<String?>(null) }
+    LaunchedEffect(messages.lastOrNull()?.id) {
+        val newest = messages.lastOrNull()
+        if (newest != null) {
+            if (lastObservedMsgId != null &&
+                lastObservedMsgId != newest.id &&
+                newest.senderId != viewModel.currentUserId &&
+                newest.type != "system"
+            ) {
+                ChatSoundPlayer.playReceiveSound(context, preferences.chatSoundsEnabled)
+            }
+            lastObservedMsgId = newest.id
+        }
+    }
+
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -422,10 +462,11 @@ fun ChatScreen(
         }
     }
 
-    val peerVisiblyOnline = !isGroupChat && peerProfile?.isVisiblyOnline(nowMillis) == true
-    val peerEffectivelyOnline = !isGroupChat && peerProfile?.isEffectivelyOnline(nowMillis) == true
+    val peerVisiblyOnline = !isGroupChat && !isSelfChat && peerProfile?.isVisiblyOnline(nowMillis) == true
+    val peerEffectivelyOnline = !isGroupChat && !isSelfChat && peerProfile?.isEffectivelyOnline(nowMillis) == true
 
     val statusText = when {
+        isSelfChat -> strings.savedMessagesHeaderStatus
         isPeerTyping -> strings.typingIndicator
         isGroupChat -> "${chat?.participants?.size ?: 0} ${strings.groupMembersSuffix}"
         peerVisiblyOnline -> strings.onlineStatus
@@ -468,14 +509,29 @@ fun ChatScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(12.dp))
-                                .clickable {
+                                .clickable(enabled = !isSelfChat) {
                                     if (isGroupChat) showGroupInfoSheet = true
                                     else showPeerProfileSheet = true
                                 }
                                 .padding(vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (isGroupChat && peerPhoto.isBlank()) {
+                            if (isSelfChat) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(42.dp)
+                                        .clip(CircleShape)
+                                        .background(Brush.linearGradient(listOf(BrandBlue, BrandPurple))),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Bookmark,
+                                        contentDescription = peerName,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            } else if (isGroupChat && peerPhoto.isBlank()) {
                                 Box(
                                     modifier = Modifier
                                         .size(42.dp)
@@ -509,12 +565,28 @@ fun ChatScreen(
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f, fill = false)
                                     )
-                                    if (!isGroupChat && peerProfile?.verified == true) {
+                                    if (!isGroupChat && !isSelfChat && peerProfile?.verified == true) {
                                         Spacer(modifier = Modifier.width(5.dp))
                                         VerifiedBadge(
                                             contentDescription = strings.verifiedBadgeDesc,
                                             size = 16.dp
                                         )
+                                    }
+                                    if (activeStreak > 0 && !isSelfChat) {
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = Color(0xFFF97316).copy(alpha = 0.16f),
+                                            modifier = Modifier.testTag("chat_top_streak_badge")
+                                        ) {
+                                            Text(
+                                                text = "🔥 $activeStreak",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFFEA580C),
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
                                     }
                                 }
                                 Text(
@@ -530,7 +602,7 @@ fun ChatScreen(
                         }
 
                         // 1-on-1 Live Voice & Video Call Buttons
-                        if (!isGroupChat && peerUid.isNotBlank() && !isPeerBlocked) {
+                        if (!isGroupChat && !isSelfChat && peerUid.isNotBlank() && !isPeerBlocked) {
                             val callablePeer = peerProfile ?: PublicProfile(
                                 uid = peerUid,
                                 name = peerName,
@@ -579,20 +651,22 @@ fun ChatScreen(
                                 Icon(Icons.Rounded.MoreVert, contentDescription = "More options")
                             }
                             DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                                DropdownMenuItem(
-                                    text = { Text(if (isGroupChat) strings.groupInfoTitle else strings.viewProfile) },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = if (isGroupChat) Icons.Rounded.Group else Icons.Rounded.Person,
-                                            contentDescription = null
-                                        )
-                                    },
-                                    onClick = {
-                                        showMenu = false
-                                        if (isGroupChat) showGroupInfoSheet = true
-                                        else showPeerProfileSheet = true
-                                    }
-                                )
+                                if (!isSelfChat) {
+                                    DropdownMenuItem(
+                                        text = { Text(if (isGroupChat) strings.groupInfoTitle else strings.viewProfile) },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = if (isGroupChat) Icons.Rounded.Group else Icons.Rounded.Person,
+                                                contentDescription = null
+                                            )
+                                        },
+                                        onClick = {
+                                            showMenu = false
+                                            if (isGroupChat) showGroupInfoSheet = true
+                                            else showPeerProfileSheet = true
+                                        }
+                                    )
+                                }
                                 DropdownMenuItem(
                                     text = { Text(strings.aiSummarizeChatAction) },
                                     leadingIcon = {
@@ -654,7 +728,7 @@ fun ChatScreen(
                                         showClearChatConfirm = true
                                     }
                                 )
-                                if (!isGroupChat) {
+                                if (!isGroupChat && !isSelfChat) {
                                     DropdownMenuItem(
                                         text = { Text(strings.deleteChatAction, color = DangerRed) },
                                         leadingIcon = { Icon(Icons.Rounded.DeleteOutline, contentDescription = null, tint = DangerRed) },
@@ -663,7 +737,7 @@ fun ChatScreen(
                                             showDeleteChatConfirm = true
                                         }
                                     )
-                                } else {
+                                } else if (isGroupChat) {
                                     DropdownMenuItem(
                                         text = { Text(strings.leaveGroup, color = DangerRed) },
                                         leadingIcon = {
@@ -687,7 +761,7 @@ fun ChatScreen(
                                         )
                                     }
                                 }
-                                if (!isGroupChat && peerUid.isNotBlank()) {
+                                if (!isGroupChat && !isSelfChat && peerUid.isNotBlank()) {
                                     HorizontalDivider()
                                     DropdownMenuItem(
                                         text = { Text(if (isPeerBlocked) strings.unblockUser else strings.blockUser) },
@@ -719,6 +793,7 @@ fun ChatScreen(
                     // Compact WhatsApp-style Peer Offline Notice Bar
                     AnimatedVisibility(
                         visible = !isGroupChat &&
+                            !isSelfChat &&
                             peerProfile != null &&
                             !peerEffectivelyOnline &&
                             !isPeerBlocked &&
@@ -1108,20 +1183,16 @@ fun ChatScreen(
                                 color = DangerRed
                             )
                             Spacer(modifier = Modifier.width(10.dp))
-                            LinearProgressIndicator(
-                                progress = { recordingAmp.coerceIn(0.1f, 1f) },
-                                color = BrandPurple,
-                                trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(6.dp)
-                                    .clip(RoundedCornerShape(3.dp))
+                            LiveRecordingWaveform(
+                                amplitude = recordingAmp,
+                                modifier = Modifier.weight(1f)
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             IconButton(
                                 onClick = {
                                     val rec = voiceRecorder.stopAndFinalize()
                                     if (rec != null) {
+                                        ChatSoundPlayer.playSendSound(context, preferences.chatSoundsEnabled)
                                         viewModel.uploadAndSendVoiceNote(
                                             senderProfile = effectiveMyProfile,
                                             audioFile = rec.file,
@@ -1143,7 +1214,7 @@ fun ChatScreen(
                             }
                         }
                     } else {
-                        // Smart Bangla AI (DeepSeek) Tools Strip: Smart Reply + AI Writer
+                        // Quick Tools Strip: Bangla Stickers + Quick Reply Templates + AI Writer + Smart Reply
                         if (editingMessage == null) {
                             LazyRow(
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
@@ -1151,6 +1222,46 @@ fun ChatScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
+                                item(key = "chat_stickers_trigger") {
+                                    AssistChip(
+                                        onClick = { showStickerSheet = true },
+                                        label = {
+                                            Text(
+                                                text = strings.stickersAction,
+                                                style = MaterialTheme.typography.labelMedium
+                                            )
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Rounded.EmojiEmotions,
+                                                contentDescription = null,
+                                                tint = Color(0xFFF59E0B),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        },
+                                        modifier = Modifier.testTag("chat_stickers_trigger")
+                                    )
+                                }
+                                item(key = "chat_quick_reply_trigger") {
+                                    AssistChip(
+                                        onClick = { showQuickReplySheet = true },
+                                        label = {
+                                            Text(
+                                                text = strings.quickReplyAction,
+                                                style = MaterialTheme.typography.labelMedium
+                                            )
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Bolt,
+                                                contentDescription = null,
+                                                tint = OnlineGreen,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        },
+                                        modifier = Modifier.testTag("chat_quick_reply_trigger")
+                                    )
+                                }
                                 item(key = "ai_writer_trigger") {
                                     AssistChip(
                                         onClick = {
@@ -1211,6 +1322,7 @@ fun ChatScreen(
                                     items(quickReplies, key = { it }) { suggestion ->
                                         AssistChip(
                                             onClick = {
+                                                ChatSoundPlayer.playSendSound(context, preferences.chatSoundsEnabled)
                                                 viewModel.sendTextMessage(effectiveMyProfile, suggestion, preferences.language)
                                                 viewModel.clearQuickReplies()
                                             },
@@ -1289,6 +1401,7 @@ fun ChatScreen(
                                             if (editingMessage != null) {
                                                 viewModel.saveEditedMessage(toSend, effectiveMyProfile, preferences.language)
                                             } else {
+                                                ChatSoundPlayer.playSendSound(context, preferences.chatSoundsEnabled)
                                                 viewModel.sendTextMessage(effectiveMyProfile, toSend, preferences.language)
                                                 viewModel.clearQuickReplies()
                                             }
@@ -1449,6 +1562,28 @@ fun ChatScreen(
                                     },
                                     onLongClick = { if (msg.type != "system") selectedMessage = msg },
                                     onImageClick = { url -> fullscreenImageUrl = url },
+                                    onOpenLocationMap = { locMsg ->
+                                        LocationHelper.openInGoogleMaps(
+                                            context = context,
+                                            lat = locMsg.latitude,
+                                            lng = locMsg.longitude,
+                                            label = locMsg.locationLabel
+                                        )
+                                    },
+                                    onMessageSharedContact = { contactMsg ->
+                                        if (contactMsg.sharedContactUid.isNotBlank() &&
+                                            contactMsg.sharedContactUid != viewModel.currentUserId
+                                        ) {
+                                            onOpenDirectChatWithMember(
+                                                PublicProfile(
+                                                    uid = contactMsg.sharedContactUid,
+                                                    name = contactMsg.sharedContactName,
+                                                    username = contactMsg.sharedContactUsername,
+                                                    photoUrl = contactMsg.sharedContactPhotoUrl
+                                                )
+                                            )
+                                        }
+                                    },
                                     onDocumentClick = { url ->
                                         try {
                                             val openIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
@@ -1529,6 +1664,26 @@ fun ChatScreen(
                     onClick = {
                         showAttachSheet = false
                         showCreatePollDialog = true
+                    }
+                )
+                AttachOptionRow(
+                    icon = Icons.Rounded.LocationOn,
+                    tint = OnlineGreen,
+                    label = strings.shareLocationAction,
+                    testTag = "attach_share_location",
+                    onClick = {
+                        showAttachSheet = false
+                        showShareLocationSheet = true
+                    }
+                )
+                AttachOptionRow(
+                    icon = Icons.Rounded.ContactPage,
+                    tint = BrandBlue,
+                    label = strings.shareContactAction,
+                    testTag = "attach_share_contact",
+                    onClick = {
+                        showAttachSheet = false
+                        showShareContactSheet = true
                     }
                 )
                 AttachOptionRow(
@@ -1717,6 +1872,16 @@ fun ChatScreen(
                             }
                         )
                     }
+                    AttachOptionRow(
+                        icon = Icons.Rounded.Alarm,
+                        tint = BrandBlue,
+                        label = strings.remindMeAction,
+                        testTag = "message_action_remind_me",
+                        onClick = {
+                            reminderTargetMessage = msg
+                            selectedMessage = null
+                        }
+                    )
                     AttachOptionRow(
                         icon = Icons.AutoMirrored.Rounded.Forward,
                         tint = BrandPurple,
@@ -2165,7 +2330,8 @@ fun ChatScreen(
                 val clean = generated.trim()
                 if (clean.isNotEmpty()) {
                     messageText = ""
-                    viewModel.sendTextMessage(effectiveMyProfile, clean)
+                    ChatSoundPlayer.playSendSound(context, preferences.chatSoundsEnabled)
+                    viewModel.sendTextMessage(effectiveMyProfile, clean, preferences.language)
                     viewModel.clearQuickReplies()
                 }
                 showAiWriterSheet = false
@@ -2188,6 +2354,99 @@ fun ChatScreen(
                 showAiExplainSheet = false
                 viewModel.resetExplainState()
             }
+        )
+    }
+
+    if (showStickerSheet) {
+        BanglaStickerPickerSheet(
+            onSelectSticker = { sticker ->
+                ChatSoundPlayer.playSendSound(context, preferences.chatSoundsEnabled)
+                viewModel.sendStickerMessage(
+                    senderProfile = effectiveMyProfile,
+                    stickerId = sticker.id,
+                    stickerText = "${sticker.emoji} ${sticker.banglaText}"
+                )
+            },
+            onDismiss = { showStickerSheet = false }
+        )
+    }
+
+    if (showQuickReplySheet) {
+        QuickReplyTemplatesSheet(
+            language = preferences.language,
+            customTemplates = preferences.customQuickReplies,
+            onSendNow = { tpl ->
+                ChatSoundPlayer.playSendSound(context, preferences.chatSoundsEnabled)
+                viewModel.sendTextMessage(effectiveMyProfile, tpl, preferences.language)
+                viewModel.clearQuickReplies()
+            },
+            onInsertIntoInput = { tpl ->
+                messageText = tpl.take(4000)
+            },
+            onAddCustomTemplate = onAddCustomQuickReply,
+            onRemoveCustomTemplate = onRemoveCustomQuickReply,
+            onDismiss = { showQuickReplySheet = false }
+        )
+    }
+
+    if (showShareLocationSheet) {
+        ShareLocationSheet(
+            onSendLocation = { lat, lng, label ->
+                ChatSoundPlayer.playSendSound(context, preferences.chatSoundsEnabled)
+                viewModel.sendLocationMessage(
+                    senderProfile = effectiveMyProfile,
+                    latitude = lat,
+                    longitude = lng,
+                    label = label
+                )
+            },
+            onDismiss = { showShareLocationSheet = false }
+        )
+    }
+
+    if (showShareContactSheet) {
+        ShareContactSheet(
+            contacts = discoverableContacts.filter { it.uid != viewModel.currentUserId },
+            onLookupUsername = { query -> viewModel.lookupUserByExactUsername(query) },
+            onSelectContact = { contact ->
+                ChatSoundPlayer.playSendSound(context, preferences.chatSoundsEnabled)
+                viewModel.sendContactCardMessage(effectiveMyProfile, contact)
+            },
+            onDismiss = { showShareContactSheet = false }
+        )
+    }
+
+    reminderTargetMessage?.let { targetMsg ->
+        val preview = targetMsg.text.ifBlank {
+            when (targetMsg.type) {
+                "image" -> strings.photoMessagePreview
+                "audio" -> strings.voiceMessagePreview
+                "document" -> targetMsg.mediaName.ifBlank { strings.documentMessagePreview }
+                "sticker" -> strings.stickerMessagePreview
+                "location" -> targetMsg.locationLabel.ifBlank { strings.locationMessagePreview }
+                "contact" -> targetMsg.sharedContactName.ifBlank { strings.contactMessagePreview }
+                else -> strings.remindMeAction
+            }
+        }
+        MessageReminderSheet(
+            messagePreview = preview,
+            onPickTriggerMillis = { triggerAt, label ->
+                val ok = MessageReminderScheduler.scheduleReminder(
+                    context = context,
+                    chatId = viewModel.chatId,
+                    messageId = targetMsg.id,
+                    chatTitle = peerName,
+                    messagePreview = preview,
+                    triggerAtMillis = triggerAt
+                )
+                scope.launch {
+                    snackbarHostState.showSnackbar(
+                        if (ok) "${strings.reminderScheduledToastPrefix} $label"
+                        else strings.reminderFailedToast
+                    )
+                }
+            },
+            onDismiss = { reminderTargetMessage = null }
         )
     }
 }
@@ -2213,6 +2472,8 @@ private fun MessageBubbleItem(
     onCallBackClick: (String) -> Unit,
     onLongClick: () -> Unit,
     onImageClick: (String) -> Unit,
+    onOpenLocationMap: (ChatMessage) -> Unit = {},
+    onMessageSharedContact: (ChatMessage) -> Unit = {},
     onDocumentClick: (String) -> Unit
 ) {
     val strings = LocalAppStrings.current
@@ -2380,6 +2641,87 @@ private fun MessageBubbleItem(
         return
     }
 
+    // Dedicated Bangla Sticker Bubble (vibrant standalone gradient sticker card)
+    if (message.type == "sticker" && !message.deleted) {
+        val sticker = BanglaStickerCatalog.findById(message.stickerId) ?: BanglaSticker(
+            id = message.stickerId.ifBlank { "custom" },
+            emoji = "🎨",
+            banglaText = message.text.ifBlank { strings.stickerMessagePreview },
+            subText = "Bangla Chat",
+            startColor = BrandBlue,
+            endColor = BrandPurple
+        )
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = if (isMe) Alignment.End else Alignment.Start
+        ) {
+            if (groupSenderName.isNotBlank() && !isMe) {
+                Text(
+                    text = groupSenderName,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = BrandPurple,
+                    modifier = Modifier.padding(start = 6.dp, bottom = 3.dp)
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .widthIn(min = 164.dp, max = 224.dp)
+                    .combinedClickable(onClick = {}, onLongClick = onLongClick)
+                    .testTag("sticker_bubble_${message.id}")
+            ) {
+                BanglaStickerCard(
+                    sticker = sticker,
+                    compact = false,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            Row(
+                modifier = Modifier.padding(top = 4.dp, start = 6.dp, end = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = formatMessageTime(message.timestamp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (isMe) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    val tickIcon = if (message.delivered || message.read) Icons.Rounded.DoneAll else Icons.Rounded.Done
+                    val tickTint = if (message.read) ReadTickBlue else MaterialTheme.colorScheme.onSurfaceVariant
+                    Icon(
+                        imageVector = tickIcon,
+                        contentDescription = null,
+                        tint = tickTint,
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+            }
+            if (message.reactions.isNotEmpty()) {
+                val grouped = message.reactions.values.groupingBy { it }.eachCount()
+                Row(
+                    modifier = Modifier.padding(top = 3.dp, start = 6.dp, end = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    grouped.forEach { (emoji, count) ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            shadowElevation = 1.dp
+                        ) {
+                            Text(
+                                text = if (count > 1) "$emoji $count" else emoji,
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        return
+    }
+
     val outgoingBrush = Brush.linearGradient(colors = listOf(BrandBlue, BrandPurple))
     val incomingBg = if (isDark) IncomingBubbleDark else IncomingBubbleLight
     val bubbleShape = RoundedCornerShape(
@@ -2513,6 +2855,28 @@ private fun MessageBubbleItem(
                             metaColor = contentColor.copy(alpha = 0.78f),
                             strings = strings,
                             onVote = onVotePoll
+                        )
+                    }
+
+                    message.type == "location" -> {
+                        LocationMessageCard(
+                            message = message,
+                            isMe = isMe,
+                            textColor = contentColor,
+                            metaColor = contentColor.copy(alpha = 0.78f),
+                            onOpenMap = { onOpenLocationMap(message) }
+                        )
+                    }
+
+                    message.type == "contact" -> {
+                        ContactMessageCard(
+                            message = message,
+                            isMe = isMe,
+                            textColor = contentColor,
+                            metaColor = contentColor.copy(alpha = 0.78f),
+                            canOpenChat = message.sharedContactUid.isNotBlank() &&
+                                message.sharedContactUid != currentUserId,
+                            onMessageContact = { onMessageSharedContact(message) }
                         )
                     }
 

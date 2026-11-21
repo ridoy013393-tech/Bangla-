@@ -33,7 +33,9 @@ data class UserPreferences(
     val appLockPinHash: String = "",
     val biometricLockEnabled: Boolean = false,
     val lockedChatIds: Set<String> = emptySet(),
-    val dismissedBroadcastId: String = ""
+    val dismissedBroadcastId: String = "",
+    val chatSoundsEnabled: Boolean = true,
+    val customQuickReplies: List<String> = emptyList()
 )
 
 sealed interface UiState<out T> {
@@ -172,11 +174,14 @@ data class Chat(
     val participantNames: Map<String, String> = emptyMap(),
     val participantPhotos: Map<String, String> = emptyMap(),
     val isGroup: Boolean = false,
+    val isSelfChat: Boolean = false,
     val groupName: String = "",
     val groupDescription: String = "",
     val groupPhotoUrl: String = "",
     val adminUids: List<String> = emptyList(),
     val onlyAdminsCanSend: Boolean = false,
+    val streakCount: Int = 0,
+    val lastStreakDate: String = "",
     val lastMessage: String = "",
     val lastMessageType: String = "text",
     val lastSenderId: String = "",
@@ -198,16 +203,25 @@ data class Chat(
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
 ) {
+    fun isSavedMessagesChat(currentUid: String): Boolean =
+        isSelfChat || id == "saved_$currentUid"
+
+    fun activeStreak(todayDate: String = com.example.data.StreakCalculator.todayDateKey()): Int =
+        if (isSelfChat) 0
+        else com.example.data.StreakCalculator.activeStreakCount(streakCount, lastStreakDate, todayDate)
+
     fun peerUid(currentUid: String): String =
-        if (isGroup) "" else (participants.firstOrNull { it != currentUid } ?: "")
+        if (isGroup || isSavedMessagesChat(currentUid)) "" else (participants.firstOrNull { it != currentUid } ?: "")
 
     fun peerName(currentUid: String): String {
+        if (isSavedMessagesChat(currentUid)) return "Saved Messages"
         if (isGroup) return groupName.ifBlank { "Group Chat" }
         val other = peerUid(currentUid)
         return participantNames[other].orEmpty().ifBlank { "Bangla Chat User" }
     }
 
     fun peerPhotoUrl(currentUid: String): String {
+        if (isSavedMessagesChat(currentUid)) return ""
         if (isGroup) return groupPhotoUrl
         val other = peerUid(currentUid)
         return participantPhotos[other].orEmpty()
@@ -255,6 +269,14 @@ data class ChatMessage(
     val pollQuestion: String = "",
     val pollOptions: List<String> = emptyList(),
     val pollVotes: Map<String, String> = emptyMap(),
+    val stickerId: String = "",
+    val latitude: Double = 0.0,
+    val longitude: Double = 0.0,
+    val locationLabel: String = "",
+    val sharedContactUid: String = "",
+    val sharedContactName: String = "",
+    val sharedContactUsername: String = "",
+    val sharedContactPhotoUrl: String = "",
     val delivered: Boolean = false,
     val read: Boolean = false,
     val deleted: Boolean = false,

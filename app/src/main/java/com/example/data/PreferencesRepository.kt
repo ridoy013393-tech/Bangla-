@@ -39,6 +39,8 @@ class PreferencesRepository(context: Context) {
         val BIOMETRIC_LOCK_ENABLED = booleanPreferencesKey("biometric_lock_enabled")
         val LOCKED_CHAT_IDS = stringSetPreferencesKey("locked_chat_ids")
         val DISMISSED_BROADCAST_ID = stringPreferencesKey("dismissed_broadcast_id")
+        val CHAT_SOUNDS_ENABLED = booleanPreferencesKey("chat_sounds_enabled")
+        val CUSTOM_QUICK_REPLIES = stringSetPreferencesKey("custom_quick_replies")
     }
 
     val preferencesFlow: Flow<UserPreferences> = dataStore.data
@@ -76,7 +78,9 @@ class PreferencesRepository(context: Context) {
                 appLockPinHash = pinHash,
                 biometricLockEnabled = prefs[Keys.BIOMETRIC_LOCK_ENABLED] ?: false,
                 lockedChatIds = prefs[Keys.LOCKED_CHAT_IDS] ?: emptySet(),
-                dismissedBroadcastId = prefs[Keys.DISMISSED_BROADCAST_ID].orEmpty()
+                dismissedBroadcastId = prefs[Keys.DISMISSED_BROADCAST_ID].orEmpty(),
+                chatSoundsEnabled = prefs[Keys.CHAT_SOUNDS_ENABLED] ?: true,
+                customQuickReplies = (prefs[Keys.CUSTOM_QUICK_REPLIES] ?: emptySet()).sorted()
             )
         }
 
@@ -137,6 +141,28 @@ class PreferencesRepository(context: Context) {
 
     suspend fun setDismissedBroadcastId(broadcastId: String) {
         dataStore.edit { it[Keys.DISMISSED_BROADCAST_ID] = broadcastId }
+    }
+
+    suspend fun setChatSoundsEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.CHAT_SOUNDS_ENABLED] = enabled }
+    }
+
+    suspend fun addCustomQuickReply(template: String) {
+        val clean = template.trim().take(180)
+        if (clean.isEmpty()) return
+        dataStore.edit { prefs ->
+            val current = prefs[Keys.CUSTOM_QUICK_REPLIES] ?: emptySet()
+            if (current.size < 25) {
+                prefs[Keys.CUSTOM_QUICK_REPLIES] = current + clean
+            }
+        }
+    }
+
+    suspend fun removeCustomQuickReply(template: String) {
+        dataStore.edit { prefs ->
+            val current = prefs[Keys.CUSTOM_QUICK_REPLIES] ?: emptySet()
+            prefs[Keys.CUSTOM_QUICK_REPLIES] = current - template
+        }
     }
 
     companion object {

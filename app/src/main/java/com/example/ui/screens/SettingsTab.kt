@@ -61,6 +61,7 @@ import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Wallpaper
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -132,6 +133,7 @@ fun SettingsTab(
     onUploadAvatar: (Uri) -> Unit,
     onUpdatePrivacy: (Boolean, Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit,
     onUpdateMessagePreview: (Boolean) -> Unit,
+    onToggleChatSounds: (Boolean) -> Unit = {},
     onChangeLanguage: (AppLanguage) -> Unit,
     onChangeTheme: (ThemePreference) -> Unit,
     onChangeWallpaper: (ChatWallpaper) -> Unit,
@@ -637,6 +639,34 @@ fun SettingsTab(
                     Switch(
                         checked = myPrivateUser?.messagePreviewEnabled ?: true,
                         onCheckedChange = onUpdateMessagePreview
+                    )
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SettingsLeadingBadge(
+                        icon = Icons.Rounded.VolumeUp,
+                        tint = BrandBlue
+                    )
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(strings.chatSoundsSetting, style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            text = strings.chatSoundsDesc,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = preferences.chatSoundsEnabled,
+                        onCheckedChange = onToggleChatSounds,
+                        modifier = Modifier.testTag("chat_sounds_switch")
                     )
                 }
             }

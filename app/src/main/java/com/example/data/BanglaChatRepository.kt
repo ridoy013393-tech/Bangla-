@@ -808,6 +808,66 @@ class BanglaChatRepository(
         }
     }
 
+    suspend fun openOrCreateSavedMessagesChat(myProfile: PublicProfile): Result<String> {
+        val myUid = myProfile.uid
+        val chatId = "saved_$myUid"
+        val path = "chats/$chatId"
+        return try {
+            val currentUid = requireUserId()
+            check(currentUid == myUid) { "Signed-in user mismatch" }
+
+            val chatRef = db.collection("chats").document(chatId)
+            val snap = chatRef.get().await()
+            if (!snap.exists()) {
+                val payload = mapOf(
+                    "participants" to listOf(myUid),
+                    "participantNames" to mapOf(
+                        myUid to myProfile.name.ifBlank { "Saved Messages" }.take(60)
+                    ),
+                    "participantPhotos" to mapOf(
+                        myUid to myProfile.photoUrl.take(500)
+                    ),
+                    "isGroup" to false,
+                    "isSelfChat" to true,
+                    "streakCount" to 0,
+                    "lastStreakDate" to "",
+                    "lastMessage" to "",
+                    "lastMessageType" to "text",
+                    "lastSenderId" to "",
+                    "lastMessageTime" to FieldValue.serverTimestamp(),
+                    "unreadCounts" to mapOf(myUid to 0L),
+                    "typingUids" to emptyList<String>(),
+                    "hiddenBy" to emptyList<String>(),
+                    "createdBy" to myUid,
+                    "createdAt" to FieldValue.serverTimestamp(),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+                chatRef.set(payload).await()
+            } else {
+                val existingChat = snap.toObject(
+                    Chat::class.java,
+                    DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+                )
+                if (existingChat != null && existingChat.isHiddenFor(myUid)) {
+                    runCatching {
+                        chatRef.update(
+                            mapOf(
+                                "hiddenBy" to emptyList<String>(),
+                                "updatedAt" to FieldValue.serverTimestamp()
+                            )
+                        ).await()
+                    }
+                }
+            }
+            Result.success(chatId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.CREATE, path)
+            Result.failure(e)
+        }
+    }
+
     private suspend fun postGroupSystemEvent(
         chatId: String,
         participants: List<String>,
@@ -1380,6 +1440,14 @@ class BanglaChatRepository(
         mediaName: String? = null,
         mediaSizeBytes: Long? = null,
         audioDurationSec: Long? = null,
+        stickerId: String? = null,
+        latitude: Double? = null,
+        longitude: Double? = null,
+        locationLabel: String? = null,
+        sharedContactUid: String? = null,
+        sharedContactName: String? = null,
+        sharedContactUsername: String? = null,
+        sharedContactPhotoUrl: String? = null,
         replyTo: ChatMessage? = null,
         replySenderName: String? = null,
         forwarded: Boolean = false,
@@ -1403,8 +1471,16 @@ class BanglaChatRepository(
             }
 
             val cleanText = text.trim().take(4000)
-            require(cleanText.isNotEmpty() || !mediaUrl.isNullOrBlank()) { "Message cannot be empty" }
-            val safeType = if (type in setOf("text", "image", "document", "audio")) type else "text"
+            val safeType = if (type in setOf("text", "image", "document", "audio", "sticker", "location", "contact")) {
+                type
+            } else {
+                "text"
+            }
+            val hasRichPayload = !mediaUrl.isNullOrBlank() ||
+                !stickerId.isNullOrBlank() ||
+                (safeType == "location" && latitude != null && longitude != null) ||
+                (safeType == "contact" && !sharedContactUid.isNullOrBlank())
+            require(cleanText.isNotEmpty() || hasRichPayload) { "Message cannot be empty" }
             val isViewOnceImage = viewOnce && safeType == "image"
 
             val expiresAtTimestamp = if (liveChat.disappearingHours in setOf(24L, 168L)) {
@@ -1426,10 +1502,18 @@ class BanglaChatRepository(
                 "mediaName" to mediaName?.take(200),
                 "mediaSizeBytes" to mediaSizeBytes?.coerceIn(0L, 10_485_760L),
                 "audioDurationSec" to audioDurationSec?.coerceIn(0L, 600L),
+                "stickerId" to stickerId?.takeIf { it.isNotBlank() }?.take(64),
+                "latitude" to if (safeType == "location") latitude?.coerceIn(-90.0, 90.0) else null,
+                "longitude" to if (safeType == "location") longitude?.coerceIn(-180.0, 180.0) else null,
+                "locationLabel" to if (safeType == "location") locationLabel?.trim()?.take(160) else null,
+                "sharedContactUid" to if (safeType == "contact") sharedContactUid?.take(128) else null,
+                "sharedContactName" to if (safeType == "contact") sharedContactName?.trim()?.take(80) else null,
+                "sharedContactUsername" to if (safeType == "contact") sharedContactUsername?.trim()?.take(40) else null,
+                "sharedContactPhotoUrl" to if (safeType == "contact") sharedContactPhotoUrl?.take(500) else null,
                 "viewOnce" to if (isViewOnceImage) true else null,
                 "viewedBy" to if (isViewOnceImage) emptyList<String>() else null,
-                "delivered" to false,
-                "read" to false,
+                "delivered" to liveChat.isSavedMessagesChat(uid),
+                "read" to liveChat.isSavedMessagesChat(uid),
                 "deleted" to false,
                 "edited" to false,
                 "forwarded" to forwarded,
@@ -1460,28 +1544,39 @@ class BanglaChatRepository(
 
             val preview = when {
                 isViewOnceImage -> "📷 ১ বার দেখার ছবি"
+                safeType == "sticker" -> "🎨 ${cleanText.ifBlank { "স্টিকার" }}".take(200)
+                safeType == "location" -> "📍 ${locationLabel?.takeIf { it.isNotBlank() } ?: "লোকেশন"}".take(200)
+                safeType == "contact" -> "👤 ${sharedContactName?.takeIf { it.isNotBlank() } ?: "কন্টাক্ট কার্ড"}".take(200)
                 cleanText.isNotBlank() -> cleanText.take(500)
                 safeType == "audio" -> "🎤"
                 safeType == "image" -> "📷"
                 else -> mediaName?.take(200) ?: "📎"
             }
 
-            db.collection("chats").document(chatId).update(
-                mapOf(
-                    "lastMessage" to preview,
-                    "lastMessageType" to safeType,
-                    "lastSenderId" to uid,
-                    "lastMessageTime" to FieldValue.serverTimestamp(),
-                    "lastMessageDelivered" to false,
-                    "lastMessageRead" to false,
-                    "hiddenBy" to emptyList<String>(),
-                    "unreadCounts" to newUnread,
-                    "typingUids" to liveChat.typingUids.filter { it != uid },
-                    "participantNames" to updatedNames,
-                    "participantPhotos" to updatedPhotos,
-                    "updatedAt" to FieldValue.serverTimestamp()
+            val chatUpdate = mutableMapOf<String, Any>(
+                "lastMessage" to preview,
+                "lastMessageType" to safeType,
+                "lastSenderId" to uid,
+                "lastMessageTime" to FieldValue.serverTimestamp(),
+                "lastMessageDelivered" to liveChat.isSavedMessagesChat(uid),
+                "lastMessageRead" to liveChat.isSavedMessagesChat(uid),
+                "hiddenBy" to emptyList<String>(),
+                "unreadCounts" to newUnread,
+                "typingUids" to liveChat.typingUids.filter { it != uid },
+                "participantNames" to updatedNames,
+                "participantPhotos" to updatedPhotos,
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            if (!liveChat.isSavedMessagesChat(uid)) {
+                val (nextStreak, todayKey) = StreakCalculator.computeNextStreak(
+                    currentStreak = liveChat.streakCount,
+                    lastStreakDate = liveChat.lastStreakDate
                 )
-            ).await()
+                chatUpdate["streakCount"] = nextStreak
+                chatUpdate["lastStreakDate"] = todayKey
+            }
+
+            db.collection("chats").document(chatId).update(chatUpdate).await()
 
             Result.success(Unit)
         } catch (e: CancellationException) {

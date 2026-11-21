@@ -32,6 +32,7 @@ import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.ChatBubble
 import androidx.compose.material.icons.rounded.ChevronRight
@@ -157,7 +158,11 @@ fun HomeScreen(
 
     val allActiveChats = remember(chatsState, viewModel.currentUserId) {
         (chatsState as? UiState.Success)?.data
-            ?.filter { !it.isHiddenFor(viewModel.currentUserId) && !it.isArchivedFor(viewModel.currentUserId) }
+            ?.filter {
+                !it.isHiddenFor(viewModel.currentUserId) &&
+                    !it.isArchivedFor(viewModel.currentUserId) &&
+                    !it.isSavedMessagesChat(viewModel.currentUserId)
+            }
             .orEmpty()
     }
 
@@ -494,6 +499,9 @@ fun HomeScreen(
                                 viewModel.deleteGroupFromHome(chat, strings.groupDeletedToast)
                             },
                             onRequestUnlockChat = { chat -> unlockTargetChat = chat },
+                            onOpenSavedMessages = {
+                                viewModel.openSavedMessagesChat(onChatReady = onOpenChat)
+                            },
                             onExploreContacts = { selectedTab = HomeTab.CONTACTS },
                             onCreateGroupClick = { showCreateGroupDialog = true },
                             onAddStatusClick = { showCreateStatusDialog = true },
@@ -564,6 +572,9 @@ fun HomeScreen(
                             },
                             onUpdateMessagePreview = { enabled ->
                                 viewModel.updateMessagePreviewSetting(enabled)
+                            },
+                            onToggleChatSounds = { enabled ->
+                                viewModel.setChatSoundsEnabled(enabled)
                             },
                             onChangeLanguage = { lang: AppLanguage -> viewModel.setLanguage(lang) },
                             onChangeTheme = { theme: ThemePreference -> viewModel.setTheme(theme) },
@@ -700,6 +711,56 @@ fun HomeScreen(
                             )
                             Text(
                                 text = strings.newGroupSubtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Rounded.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(18.dp))
+                        .clickable {
+                            showNewActionSheet = false
+                            viewModel.openSavedMessagesChat(onChatReady = onOpenChat)
+                        }
+                        .testTag("new_action_saved_messages_row")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(BrandBlue.copy(alpha = 0.16f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Bookmark,
+                                contentDescription = strings.savedMessagesTitle,
+                                tint = BrandBlue
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = strings.savedMessagesTitle,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = strings.savedMessagesSubtitle,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

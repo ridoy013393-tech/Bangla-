@@ -697,6 +697,12 @@ private fun AuthenticatedBanglaChatHost(
                         mainViewModel.startChatWith(member) { directChatId ->
                             activeChatId = directChatId
                         }
+                    },
+                    onAddCustomQuickReply = { template ->
+                        mainViewModel.addCustomQuickReply(template)
+                    },
+                    onRemoveCustomQuickReply = { template ->
+                        mainViewModel.removeCustomQuickReply(template)
                     }
                 )
             }

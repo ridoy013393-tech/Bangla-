@@ -15,12 +15,17 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
     <uses-feature
         android:name="android.hardware.camera"
         android:required="false" />
     <uses-feature
         android:name="android.hardware.microphone"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.location.gps"
         android:required="false" />
 
     <application
@@ -67,6 +72,11 @@
         <!-- Handles Decline action from incoming call notification -->
         <receiver
             android:name=".service.CallActionReceiver"
+            android:exported="false" />
+
+        <!-- Fires scheduled local message reminder notifications -->
+        <receiver
+            android:name=".service.MessageReminderReceiver"
             android:exported="false" />
 
         <!-- Firebase Cloud Messaging Service -->

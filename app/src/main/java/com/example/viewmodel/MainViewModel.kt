@@ -338,6 +338,21 @@ class MainViewModel(
         }
     }
 
+    fun openSavedMessagesChat(onChatReady: (String) -> Unit) {
+        viewModelScope.launch {
+            val me = myProfile.value ?: PublicProfile(
+                uid = currentUserId,
+                name = Firebase.auth.currentUser?.displayName ?: "Saved Messages",
+                photoUrl = Firebase.auth.currentUser?.photoUrl?.toString().orEmpty()
+            )
+            repository.openOrCreateSavedMessagesChat(me)
+                .onSuccess { chatId -> onChatReady(chatId) }
+                .onFailure { err ->
+                    _snackbarEvents.tryEmit(err.localizedMessage ?: "Unable to open Saved Messages")
+                }
+        }
+    }
+
     fun createGroupChat(
         groupName: String,
         groupDescription: String = "",
@@ -684,6 +699,18 @@ class MainViewModel(
             preferencesRepository.toggleChatLocked(chatId)
             _snackbarEvents.tryEmit(toastMessage)
         }
+    }
+
+    fun setChatSoundsEnabled(enabled: Boolean) {
+        viewModelScope.launch { preferencesRepository.setChatSoundsEnabled(enabled) }
+    }
+
+    fun addCustomQuickReply(template: String) {
+        viewModelScope.launch { preferencesRepository.addCustomQuickReply(template) }
+    }
+
+    fun removeCustomQuickReply(template: String) {
+        viewModelScope.launch { preferencesRepository.removeCustomQuickReply(template) }
     }
 
     fun checkForAppUpdate(

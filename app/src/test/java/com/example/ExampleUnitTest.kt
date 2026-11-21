@@ -495,4 +495,43 @@ class ExampleUnitTest {
         assertTrue(alertHtml.contains("u_77"))
         assertTrue(alertHtml.contains("bad &lt;word&gt;"))
     }
+
+    @Test
+    fun dailyChatStreakCalculatorHandlesConsecutiveSameDayAndReset() {
+        // First message starts streak at 1
+        assertEquals(1 to "2026-11-21", com.example.data.StreakCalculator.computeNextStreak(0, "", "2026-11-21"))
+        // Multiple messages on the same day keep streak count unchanged
+        assertEquals(4 to "2026-11-21", com.example.data.StreakCalculator.computeNextStreak(4, "2026-11-21", "2026-11-21"))
+        // Consecutive day increments streak
+        assertEquals(5 to "2026-11-22", com.example.data.StreakCalculator.computeNextStreak(4, "2026-11-21", "2026-11-22"))
+        // Gap of 2+ days resets streak back to 1
+        assertEquals(1 to "2026-11-24", com.example.data.StreakCalculator.computeNextStreak(7, "2026-11-21", "2026-11-24"))
+
+        // Active streak check (active today or yesterday; expires when older)
+        assertEquals(6, com.example.data.StreakCalculator.activeStreakCount(6, "2026-11-21", "2026-11-21"))
+        assertEquals(6, com.example.data.StreakCalculator.activeStreakCount(6, "2026-11-20", "2026-11-21"))
+        assertEquals(0, com.example.data.StreakCalculator.activeStreakCount(6, "2026-11-19", "2026-11-21"))
+    }
+
+    @Test
+    fun banglaStickerCatalogLocationAndSavedMessagesHelpersWork() {
+        val stickers = com.example.ui.components.BanglaStickerCatalog.all
+        assertEquals(16, stickers.size)
+        assertEquals(16, stickers.map { it.id }.distinct().size)
+        assertEquals("আসসালামু আলাইকুম", com.example.ui.components.BanglaStickerCatalog.findById("salam")?.banglaText)
+        assertEquals(null, com.example.ui.components.BanglaStickerCatalog.findById("non_existent_id"))
+
+        val coords = com.example.data.LocationHelper.formatCoordinates(23.8103, 90.4125)
+        assertTrue(coords.contains("23.8103° N"))
+        assertTrue(coords.contains("90.4125° E"))
+
+        val selfChat = com.example.model.Chat(
+            id = "saved_alice",
+            participants = listOf("alice"),
+            isSelfChat = true
+        )
+        assertTrue(selfChat.isSavedMessagesChat("alice"))
+        assertEquals(0, selfChat.activeStreak())
+    }
 }
+

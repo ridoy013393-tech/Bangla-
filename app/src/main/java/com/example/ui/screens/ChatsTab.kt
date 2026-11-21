@@ -26,18 +26,22 @@ import androidx.compose.material.icons.automirrored.rounded.ExitToApp
 import androidx.compose.material.icons.rounded.Archive
 import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ContactPage
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Done
 import androidx.compose.material.icons.rounded.DoneAll
+import androidx.compose.material.icons.rounded.EmojiEmotions
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Mic
@@ -128,6 +132,7 @@ fun ChatsTab(
     onLeaveGroup: (Chat) -> Unit = {},
     onDeleteGroup: (Chat) -> Unit = {},
     onRequestUnlockChat: (Chat) -> Unit = { onChatClick(it.id) },
+    onOpenSavedMessages: () -> Unit = {},
     onExploreContacts: () -> Unit,
     onCreateGroupClick: () -> Unit,
     onAddStatusClick: () -> Unit,
@@ -195,8 +200,13 @@ fun ChatsTab(
             }
 
             is UiState.Success -> {
+                val savedChat = remember(chatsState.data, currentUserId) {
+                    chatsState.data.firstOrNull { it.isSavedMessagesChat(currentUserId) }
+                }
                 val filteredAll = remember(chatsState.data, searchQuery, currentUserId) {
-                    val visible = chatsState.data.filter { !it.isHiddenFor(currentUserId) }
+                    val visible = chatsState.data.filter {
+                        !it.isHiddenFor(currentUserId) && !it.isSavedMessagesChat(currentUserId)
+                    }
                     val matched = if (searchQuery.isBlank()) {
                         visible
                     } else {
@@ -255,6 +265,17 @@ fun ChatsTab(
                                 subtitle = strings.onlineBannerSubtitle,
                                 onDismiss = onDismissOnlineBanner,
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                            )
+                        }
+                    }
+
+                    if (selectedFilter == ChatListFilter.ALL && searchQuery.isBlank()) {
+                        item(key = "saved_messages_pinned") {
+                            SavedMessagesPinnedCard(
+                                savedChat = savedChat,
+                                title = strings.savedMessagesTitle,
+                                fallbackSubtitle = strings.savedMessagesSubtitle,
+                                onClick = onOpenSavedMessages
                             )
                         }
                     }
@@ -845,6 +866,23 @@ private fun ConversationRow(
                             size = 16.dp
                         )
                     }
+                    val streak = chat.activeStreak()
+                    if (streak > 0) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFF97316).copy(alpha = 0.16f),
+                            modifier = Modifier.testTag("chat_streak_badge_${chat.id}")
+                        ) {
+                            Text(
+                                text = "🔥 $streak",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFFEA580C),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
@@ -954,6 +992,33 @@ private fun ConversationRow(
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                 }
+                                "sticker" -> {
+                                    Icon(
+                                        imageVector = Icons.Rounded.EmojiEmotions,
+                                        contentDescription = null,
+                                        tint = Color(0xFFF59E0B),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                }
+                                "location" -> {
+                                    Icon(
+                                        imageVector = Icons.Rounded.LocationOn,
+                                        contentDescription = null,
+                                        tint = OnlineGreen,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                }
+                                "contact" -> {
+                                    Icon(
+                                        imageVector = Icons.Rounded.ContactPage,
+                                        contentDescription = null,
+                                        tint = BrandBlue,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                }
                             }
                         }
 
@@ -965,6 +1030,12 @@ private fun ConversationRow(
                                 strings.documentMessagePreview
                             chat.lastMessageType == "audio" && (chat.lastMessage.isBlank() || chat.lastMessage == "🎤") ->
                                 strings.voiceMessagePreview
+                            chat.lastMessageType == "sticker" && chat.lastMessage.isBlank() ->
+                                strings.stickerMessagePreview
+                            chat.lastMessageType == "location" && chat.lastMessage.isBlank() ->
+                                strings.locationMessagePreview
+                            chat.lastMessageType == "contact" && chat.lastMessage.isBlank() ->
+                                strings.contactMessagePreview
                             chat.lastMessage.isBlank() -> strings.chatStarted
                             else -> chat.lastMessage
                         }
@@ -1039,6 +1110,79 @@ private fun ConversationRow(
                         modifier = Modifier.size(18.dp)
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SavedMessagesPinnedCard(
+    savedChat: Chat?,
+    title: String,
+    fallbackSubtitle: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = BrandBlue.copy(alpha = 0.08f),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick)
+            .testTag("saved_messages_card")
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(Brush.linearGradient(listOf(BrandBlue, BrandPurple))),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Bookmark,
+                    contentDescription = title,
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    savedChat?.lastMessageTime?.let { ts ->
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = formatConversationTime(ts),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = BrandBlue
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = savedChat?.lastMessage?.takeIf { it.isNotBlank() } ?: fallbackSubtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }

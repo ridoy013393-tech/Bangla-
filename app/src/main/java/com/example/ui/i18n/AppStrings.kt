@@ -610,6 +610,49 @@ interface AppStrings {
     val registerWithEmail: String
     val showPasswordDesc: String
     val hidePasswordDesc: String
+    // v2.1 Features: Streak, Saved Messages, Bangla Stickers, Location/Contact, Sounds, Reminders & Quick Replies
+    val savedMessagesTitle: String
+    val savedMessagesSubtitle: String
+    val savedMessagesHeaderStatus: String
+    val streakBadgeSuffix: String
+    val stickersAction: String
+    val stickersSheetTitle: String
+    val stickersSheetSubtitle: String
+    val stickerMessagePreview: String
+    val shareLocationAction: String
+    val shareLocationSubtitle: String
+    val locationPermissionExplain: String
+    val allowLocationAction: String
+    val locationPermissionDenied: String
+    val fetchingLocationStatus: String
+    val locationFetchFailed: String
+    val locationReadyLabel: String
+    val locationLabelHint: String
+    val currentLocationDefaultLabel: String
+    val sendLocationAction: String
+    val locationMessagePreview: String
+    val openInGoogleMaps: String
+    val shareContactAction: String
+    val shareContactEmptyHint: String
+    val contactMessagePreview: String
+    val messageSharedContactAction: String
+    val chatSoundsSetting: String
+    val chatSoundsDesc: String
+    val quickReplyAction: String
+    val quickReplyTemplatesTitle: String
+    val quickReplyTemplatesSubtitle: String
+    val quickReplyAddHint: String
+    val quickReplyCustomSection: String
+    val quickReplyPresetSection: String
+    val remindMeAction: String
+    val remindMeTitle: String
+    val reminderIn10Min: String
+    val reminderIn30Min: String
+    val reminderIn1Hour: String
+    val reminderIn3Hours: String
+    val reminderTomorrow9Am: String
+    val reminderScheduledToastPrefix: String
+    val reminderFailedToast: String
 }
 
 object BanglaStrings : AppStrings {
@@ -1189,6 +1232,48 @@ object BanglaStrings : AppStrings {
     override val registerWithEmail = "ইমেইল ও পাসওয়ার্ড দিয়ে অ্যাকাউন্ট খুলুন"
     override val showPasswordDesc = "পাসওয়ার্ড দেখুন"
     override val hidePasswordDesc = "পাসওয়ার্ড লুকান"
+    override val savedMessagesTitle = "আমার নোটস (Saved Messages)"
+    override val savedMessagesSubtitle = "ব্যক্তিগত নোট, ছবি, লিংক ও ফাইল ক্লাউডে সংরক্ষণ করুন"
+    override val savedMessagesHeaderStatus = "ব্যক্তিগত ক্লাউড নোটস • শুধু আপনি দেখতে পারবেন"
+    override val streakBadgeSuffix = "দিন স্ট্রিক"
+    override val stickersAction = "বাংলা স্টিকার"
+    override val stickersSheetTitle = "বাংলা ফানি স্টিকার প্যাক"
+    override val stickersSheetSubtitle = "ট্যাপ করলেই চ্যাটে রঙিন স্টিকার চলে যাবে"
+    override val stickerMessagePreview = "স্টিকার পাঠিয়েছে"
+    override val shareLocationAction = "বর্তমান লোকেশন শেয়ার"
+    override val shareLocationSubtitle = "আপনার লাইভ GPS লোকেশন Google Maps কার্ড হিসেবে পাঠান"
+    override val locationPermissionExplain = "আপনার বর্তমান অবস্থান শনাক্ত করে চ্যাটে পাঠাতে লোকেশন অনুমতি দিন। ব্যাকগ্রাউন্ডে কোনো লোকেশন সংগ্রহ করা হয় না।"
+    override val allowLocationAction = "লোকেশন অনুমতি দিন"
+    override val locationPermissionDenied = "লোকেশন অনুমতি দেওয়া হয়নি"
+    override val fetchingLocationStatus = "আপনার লোকেশন খোঁজা হচ্ছে..."
+    override val locationFetchFailed = "লোকেশন পাওয়া যায়নি। ফোনের GPS / Location চালু করে আবার চেষ্টা করুন।"
+    override val locationReadyLabel = "লোকেশন পাওয়া গেছে"
+    override val locationLabelHint = "জায়গার নাম লিখুন (যেমন: মিরপুর ১০ / বাসা)..."
+    override val currentLocationDefaultLabel = "আমার বর্তমান লোকেশন"
+    override val sendLocationAction = "লোকেশন পাঠান"
+    override val locationMessagePreview = "লোকেশন শেয়ার করেছে"
+    override val openInGoogleMaps = "Google Maps-এ খুলুন"
+    override val shareContactAction = "কন্টাক্ট কার্ড শেয়ার"
+    override val shareContactEmptyHint = "কোনো পরিচিত কন্টাক্ট নেই — উপরে @username লিখে খুঁজুন।"
+    override val contactMessagePreview = "কন্টাক্ট কার্ড"
+    override val messageSharedContactAction = "মেসেজ পাঠান"
+    override val chatSoundsSetting = "চ্যাট সাউন্ড এফেক্ট"
+    override val chatSoundsDesc = "মেসেজ পাঠানো ও পাওয়ার সময় মিষ্টি সাউন্ড বাজবে"
+    override val quickReplyAction = "দ্রুত উত্তর"
+    override val quickReplyTemplatesTitle = "কুইক রিপ্লাই টেমপ্লেট"
+    override val quickReplyTemplatesSubtitle = "১ ট্যাপে সরাসরি মেসেজ পাঠান বা নিজের উত্তর সেভ করুন"
+    override val quickReplyAddHint = "নতুন কুইক রিপ্লাই লিখুন..."
+    override val quickReplyCustomSection = "আপনার সেভ করা উত্তর"
+    override val quickReplyPresetSection = "জনপ্রিয় বাংলা উত্তর"
+    override val remindMeAction = "রিমাইন্ডার সেট করুন"
+    override val remindMeTitle = "কখন মনে করিয়ে দেব?"
+    override val reminderIn10Min = "১০ মিনিট পর"
+    override val reminderIn30Min = "৩০ মিনিট পর"
+    override val reminderIn1Hour = "১ ঘণ্টা পর"
+    override val reminderIn3Hours = "৩ ঘণ্টা পর"
+    override val reminderTomorrow9Am = "আগামীকাল সকাল ৯:০০ টায়"
+    override val reminderScheduledToastPrefix = "রিমাইন্ডার সেট হয়েছে:"
+    override val reminderFailedToast = "রিমাইন্ডার সেট করা যায়নি"
 }
 
 object EnglishStrings : AppStrings {
@@ -1768,6 +1853,48 @@ object EnglishStrings : AppStrings {
     override val registerWithEmail = "Sign up with Email & Password"
     override val showPasswordDesc = "Show password"
     override val hidePasswordDesc = "Hide password"
+    override val savedMessagesTitle = "Saved Messages"
+    override val savedMessagesSubtitle = "Save private notes, photos, files & links in your cloud"
+    override val savedMessagesHeaderStatus = "Private cloud notes • Visible only to you"
+    override val streakBadgeSuffix = "day streak"
+    override val stickersAction = "Bangla Stickers"
+    override val stickersSheetTitle = "Bangla Funny Sticker Pack"
+    override val stickersSheetSubtitle = "Tap any sticker to send it right away"
+    override val stickerMessagePreview = "Sent a sticker"
+    override val shareLocationAction = "Share Current Location"
+    override val shareLocationSubtitle = "Send your GPS pin as an interactive Google Maps card"
+    override val locationPermissionExplain = "Allow foreground location access to pin your current spot in this chat. Location is never tracked in the background."
+    override val allowLocationAction = "Allow Location"
+    override val locationPermissionDenied = "Location permission was denied"
+    override val fetchingLocationStatus = "Getting your GPS location..."
+    override val locationFetchFailed = "Could not get location. Please turn on GPS and try again."
+    override val locationReadyLabel = "Location Ready"
+    override val locationLabelHint = "Place label (e.g., Mirpur 10 / Home)..."
+    override val currentLocationDefaultLabel = "My Current Location"
+    override val sendLocationAction = "Send Location"
+    override val locationMessagePreview = "Shared a location"
+    override val openInGoogleMaps = "Open in Google Maps"
+    override val shareContactAction = "Share Contact Card"
+    override val shareContactEmptyHint = "No contacts listed — search by @username above."
+    override val contactMessagePreview = "Contact Card"
+    override val messageSharedContactAction = "Message"
+    override val chatSoundsSetting = "Chat Sound Effects"
+    override val chatSoundsDesc = "Play a soft chime when sending or receiving messages"
+    override val quickReplyAction = "Quick Replies"
+    override val quickReplyTemplatesTitle = "Quick Reply Templates"
+    override val quickReplyTemplatesSubtitle = "Tap to send instantly or save your own custom replies"
+    override val quickReplyAddHint = "Add a custom quick reply..."
+    override val quickReplyCustomSection = "Your Saved Replies"
+    override val quickReplyPresetSection = "Popular Quick Replies"
+    override val remindMeAction = "Remind Me"
+    override val remindMeTitle = "When should we remind you?"
+    override val reminderIn10Min = "In 10 minutes"
+    override val reminderIn30Min = "In 30 minutes"
+    override val reminderIn1Hour = "In 1 hour"
+    override val reminderIn3Hours = "In 3 hours"
+    override val reminderTomorrow9Am = "Tomorrow at 9:00 AM"
+    override val reminderScheduledToastPrefix = "Reminder set:"
+    override val reminderFailedToast = "Unable to schedule reminder"
 }
 
 fun stringsForLanguage(language: AppLanguage): AppStrings =

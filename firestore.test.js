@@ -1564,4 +1564,161 @@ test("v1.9 Live Force-Update config (appConfig/appUpdate): Super Admin write-onl
   );
 });
 
+test("v2.1 features: Saved Messages owner-only self-chat, Daily Streaks, Stickers, Location & Contact cards", async () => {
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID).firestore();
+  const now = pastDate(3000);
+
+  // 1. Saved Messages self-chat (saved_<uid>) — owner-only creation & strict isolation
+  const savedChatId = `saved_${ALICE_UID}`;
+  const validSavedChat = {
+    participants: [ALICE_UID],
+    participantNames: { [ALICE_UID]: "Saved Messages" },
+    participantPhotos: { [ALICE_UID]: "" },
+    isGroup: false,
+    isSelfChat: true,
+    lastMessage: "",
+    lastMessageType: "text",
+    lastSenderId: ALICE_UID,
+    lastMessageTime: now,
+    unreadCounts: { [ALICE_UID]: 0 },
+    typingUids: [],
+    createdBy: ALICE_UID,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  // Bob CANNOT create Alice's saved messages chat
+  await assertFails(bobDb.collection("chats").doc(savedChatId).set(validSavedChat));
+
+  // Alice CANNOT create a single-participant chat without isSelfChat: true & saved_<uid> doc ID
+  await assertFails(
+    aliceDb.collection("chats").doc("random_solo_chat").set({
+      ...validSavedChat,
+      isSelfChat: false,
+    })
+  );
+
+  // Alice CAN create her own saved messages self-chat
+  await assertSucceeds(aliceDb.collection("chats").doc(savedChatId).set(validSavedChat));
+
+  // Alice CAN save a note in her self-chat
+  await assertSucceeds(
+    aliceDb.collection("chats").doc(savedChatId).collection("messages").doc("note_1").set({
+      chatId: savedChatId,
+      senderId: ALICE_UID,
+      senderName: "Alice",
+      participants: [ALICE_UID],
+      text: "বাজারের তালিকা: চাল, ডাল",
+      type: "text",
+      delivered: true,
+      read: true,
+      deleted: false,
+      timestamp: pastDate(2500),
+      updatedAt: pastDate(2500),
+    })
+  );
+
+  // Bob CANNOT read or write Alice's saved messages chat or its messages
+  await assertFails(bobDb.collection("chats").doc(savedChatId).get());
+  await assertFails(bobDb.collection("chats").doc(savedChatId).collection("messages").doc("note_1").get());
+  await assertFails(
+    bobDb.collection("chats").doc(savedChatId).collection("messages").doc("intruder").set({
+      chatId: savedChatId,
+      senderId: BOB_UID,
+      senderName: "Bob",
+      participants: [ALICE_UID],
+      text: "Sneaking in",
+      type: "text",
+      delivered: false,
+      read: false,
+      deleted: false,
+      timestamp: pastDate(2000),
+      updatedAt: pastDate(2000),
+    })
+  );
+
+  // 2. Regular chat: Sticker, Location, Contact messages + Daily Chat Streak updates
+  await assertSucceeds(aliceDb.collection("chats").doc(CHAT_AB).set(validChat()));
+
+  // Sticker message
+  await assertSucceeds(
+    aliceDb.collection("chats").doc(CHAT_AB).collection("messages").doc("msg_sticker_1").set({
+      ...validMessage({ senderId: ALICE_UID }),
+      type: "sticker",
+      text: "🔥 খেলা হবে!",
+      stickerId: "khela_hobe",
+    })
+  );
+
+  // Valid Location message
+  await assertSucceeds(
+    aliceDb.collection("chats").doc(CHAT_AB).collection("messages").doc("msg_loc_1").set({
+      ...validMessage({ senderId: ALICE_UID }),
+      type: "location",
+      text: "📍 মিরপুর ১০, ঢাকা",
+      latitude: 23.8069,
+      longitude: 90.3687,
+      locationLabel: "মিরপুর ১০, ঢাকা",
+    })
+  );
+
+  // Invalid Latitude (> 90) must FAIL
+  await assertFails(
+    aliceDb.collection("chats").doc(CHAT_AB).collection("messages").doc("msg_loc_bad").set({
+      ...validMessage({ senderId: ALICE_UID }),
+      type: "location",
+      text: "📍 Bad Coords",
+      latitude: 120.5,
+      longitude: 90.3687,
+      locationLabel: "Invalid",
+    })
+  );
+
+  // Valid Contact Card message
+  await assertSucceeds(
+    aliceDb.collection("chats").doc(CHAT_AB).collection("messages").doc("msg_contact_1").set({
+      ...validMessage({ senderId: ALICE_UID }),
+      type: "contact",
+      text: "👤 Hasan (@hasan99)",
+      sharedContactUid: CHARLIE_UID,
+      sharedContactName: "Hasan",
+      sharedContactUsername: "hasan99",
+      sharedContactPhotoUrl: "",
+    })
+  );
+
+  // Daily Chat Streak update on chat doc succeeds
+  await assertSucceeds(
+    aliceDb.collection("chats").doc(CHAT_AB).update({
+      lastMessage: "🔥 খেলা হবে!",
+      lastMessageType: "sticker",
+      lastSenderId: ALICE_UID,
+      lastMessageTime: pastDate(1500),
+      lastMessageDelivered: false,
+      lastMessageRead: false,
+      unreadCounts: { [ALICE_UID]: 0, [BOB_UID]: 1 },
+      typingUids: [],
+      hiddenBy: [],
+      streakCount: 3,
+      lastStreakDate: "2026-11-21",
+      updatedAt: pastDate(1500),
+    })
+  );
+
+  // Negative streakCount must FAIL
+  await assertFails(
+    aliceDb.collection("chats").doc(CHAT_AB).update({
+      lastMessage: "Bad streak",
+      lastMessageType: "text",
+      lastSenderId: ALICE_UID,
+      lastMessageTime: pastDate(1000),
+      streakCount: -1,
+      lastStreakDate: "2026-11-21",
+      updatedAt: pastDate(1000),
+    })
+  );
+});
+
+
 

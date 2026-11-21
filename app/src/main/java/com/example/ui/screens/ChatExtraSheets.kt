@@ -103,6 +103,7 @@ import coil.compose.AsyncImage
 import com.example.data.VoiceNotePlayer
 import com.example.data.VoicePlaybackState
 import com.example.model.ChatMessage
+import com.example.ui.components.AnimatedVoiceNoteWaveform
 import com.example.ui.i18n.AppStrings
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.BrandBlue
@@ -235,14 +236,6 @@ fun VoiceWaveformBubble(
         totalSec
     }
 
-    val bars = remember(message.id) {
-        val seed = message.id.hashCode()
-        List(20) { idx ->
-            val v = abs((seed * 31 + idx * 17) % 100)
-            (0.24f + (v / 100f) * 0.76f)
-        }
-    }
-
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -276,31 +269,13 @@ fun VoiceWaveformBubble(
         }
         Spacer(Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.5.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(26.dp)
-            ) {
-                bars.forEachIndexed { idx, heightFraction ->
-                    val barThreshold = (idx + 1).toFloat() / bars.size.toFloat()
-                    val played = isThisActive && progress >= barThreshold
-                    val barColor = when {
-                        played && isMe -> Color.White
-                        played && !isMe -> BrandBlue
-                        isMe -> Color.White.copy(alpha = 0.36f)
-                        else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.34f)
-                    }
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(heightFraction)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(barColor)
-                    )
-                }
-            }
+            AnimatedVoiceNoteWaveform(
+                seedKey = message.id,
+                progress = progress,
+                isActive = isThisActive,
+                isPlaying = isThisPlaying,
+                isMe = isMe
+            )
             Spacer(Modifier.height(4.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -986,6 +961,9 @@ fun exportChatToTxtAndShare(
             "audio" -> "[Voice Note ${msg.audioDurationSec}s]"
             "document" -> "[Document: ${msg.mediaName}] ${msg.text}".trim()
             "poll" -> "[Poll: ${msg.pollQuestion.ifBlank { msg.text }}] Options: ${msg.pollOptions.joinToString(", ")}"
+            "sticker" -> "[Sticker] ${msg.text}"
+            "location" -> "[Location: ${msg.locationLabel.ifBlank { "GPS" }} (${msg.latitude}, ${msg.longitude})]"
+            "contact" -> "[Contact: ${msg.sharedContactName} @${msg.sharedContactUsername}]"
             "call" -> "[Call] ${msg.text}"
             else -> msg.text
         }
