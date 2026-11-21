@@ -238,10 +238,10 @@ class MainViewModel(
                         liveUpdate
                     }
                     _updateCheckResult.value = UpdateCheckResult.UpdateAvailable(winner)
-                } else if (config != null && !config.active) {
-                    // If admin turned off Firestore force update, re-verify against GitHub
+                } else if (config != null) {
+                    // Live server confirmed this build is already up-to-date or gate is off
                     if (_updateCheckResult.value is UpdateCheckResult.UpdateAvailable) {
-                        checkForAppUpdate(manual = false, forceRecheck = true)
+                        _updateCheckResult.value = UpdateCheckResult.Idle
                     }
                 }
             }

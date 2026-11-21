@@ -240,6 +240,16 @@ class ExampleUnitTest {
         )
         assertTrue(bnShare.contains("https://example.com/BanglaChat.apk"))
         assertTrue(bnShare.contains("@ridoy"))
+
+        // Random decimals like "Android 12.0" or "25.4 MB" in release body must NOT parse as version 12.0
+        val bodyNoise = com.example.data.AppUpdateChecker.parseGitHubReleaseMetadata(
+            tagName = "latest-apk",
+            releaseName = "Latest APK",
+            bodyNotes = "Fixed crash on Android 12.0 devices. APK size 25.4 MB.",
+            apkUrl = "https://example.com/BanglaChat.apk",
+            releaseUrl = "https://example.com/release"
+        )
+        assertEquals(null, bodyNoise)
     }
 
     @Test

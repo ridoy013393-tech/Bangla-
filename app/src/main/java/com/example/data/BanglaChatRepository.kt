@@ -2939,9 +2939,11 @@ class BanglaChatRepository(
     fun observeAppUpdateConfig(): Flow<AppUpdateConfig?> {
         val path = "appConfig/appUpdate"
         return db.collection("appConfig").document("appUpdate")
-            .snapshots()
+            .snapshots(com.google.firebase.firestore.MetadataChanges.INCLUDE)
             .map { snap ->
-                if (!snap.exists()) null
+                // Ignore stale disk-cached snapshots on cold launch so an outdated config
+                // never flashes the Force Update screen for 1-2 seconds before server sync arrives.
+                if (snap.metadata.isFromCache || !snap.exists()) null
                 else snap.toObject(
                     AppUpdateConfig::class.java,
                     DocumentSnapshot.ServerTimestampBehavior.ESTIMATE

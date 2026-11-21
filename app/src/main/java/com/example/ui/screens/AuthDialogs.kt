@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.util.Patterns
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -15,21 +16,28 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Email
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Password
 import androidx.compose.material.icons.rounded.PersonAdd
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -55,11 +63,17 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.data.normalizePhoneNumber
+import com.example.data.registerWithEmailPassword
+import com.example.data.sendPasswordResetEmail
+import com.example.data.signInWithEmailPassword
 import com.example.data.signInWithPhoneCredential
 import com.example.data.startPhoneNumberVerification
+import com.example.model.AppLanguage
 import com.example.ui.components.GoogleGLogo
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.BrandBlue
@@ -423,16 +437,29 @@ fun PhoneLoginBottomSheet(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EmailLoginBottomSheet(
+    currentLanguage: AppLanguage,
+    initialRegisterMode: Boolean = false,
     onDismiss: () -> Unit,
-    onContinueEmailAuth: (email: String) -> Unit
+    onEmailAuthSuccess: (isNewAccount: Boolean) -> Unit,
+    onContinueWithGoogleFallback: () -> Unit
 ) {
     val strings = LocalAppStrings.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val isBangla = currentLanguage == AppLanguage.BANGLA
+
+    var isRegisterMode by rememberSaveable { mutableStateOf(initialRegisterMode) }
     var emailInput by rememberSaveable { mutableStateOf("") }
+    var passwordInput by rememberSaveable { mutableStateOf("") }
+    var confirmPasswordInput by rememberSaveable { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var providerUnavailable by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isLoading) onDismiss() },
         sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
     ) {
@@ -441,6 +468,7 @@ fun EmailLoginBottomSheet(
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .imePadding()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -462,20 +490,46 @@ fun EmailLoginBottomSheet(
             Spacer(modifier = Modifier.height(12.dp))
 
             Text(
-                text = strings.emailLoginSheetTitle,
+                text = if (isRegisterMode) strings.emailRegisterAction else strings.emailLoginSheetTitle,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
             )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = strings.emailLoginSheetSubtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Login / Sign Up Mode Switcher Chips
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                FilterChip(
+                    selected = !isRegisterMode,
+                    onClick = {
+                        if (!isLoading) {
+                            isRegisterMode = false
+                            errorMessage = null
+                            providerUnavailable = false
+                        }
+                    },
+                    label = { Text(strings.emailTabLogin) },
+                    modifier = Modifier.testTag("email_mode_login_chip")
+                )
+                FilterChip(
+                    selected = isRegisterMode,
+                    onClick = {
+                        if (!isLoading) {
+                            isRegisterMode = true
+                            errorMessage = null
+                            providerUnavailable = false
+                        }
+                    },
+                    label = { Text(strings.emailTabRegister) },
+                    modifier = Modifier.testTag("email_mode_register_chip")
+                )
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
 
             OutlinedTextField(
                 value = emailInput,
@@ -487,28 +541,221 @@ fun EmailLoginBottomSheet(
                 placeholder = { Text(strings.emailInputHint) },
                 leadingIcon = { Icon(Icons.Rounded.Email, contentDescription = null, tint = BrandBlue) },
                 singleLine = true,
+                enabled = !isLoading,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                isError = errorMessage != null,
-                supportingText = errorMessage?.let { msg ->
-                    { Text(msg, color = MaterialTheme.colorScheme.error) }
-                },
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("email_login_input")
             )
 
+            Spacer(modifier = Modifier.height(10.dp))
+
+            OutlinedTextField(
+                value = passwordInput,
+                onValueChange = {
+                    passwordInput = it.take(64)
+                    errorMessage = null
+                },
+                label = { Text(strings.passwordLabel) },
+                leadingIcon = { Icon(Icons.Rounded.Lock, contentDescription = null, tint = BrandBlue) },
+                trailingIcon = {
+                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                        Icon(
+                            imageVector = if (passwordVisible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                            contentDescription = if (passwordVisible) strings.hidePasswordDesc else strings.showPasswordDesc
+                        )
+                    }
+                },
+                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                singleLine = true,
+                enabled = !isLoading,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("email_password_input")
+            )
+
+            if (isRegisterMode) {
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = confirmPasswordInput,
+                    onValueChange = {
+                        confirmPasswordInput = it.take(64)
+                        errorMessage = null
+                    },
+                    label = { Text(strings.confirmPasswordLabel) },
+                    leadingIcon = { Icon(Icons.Rounded.Lock, contentDescription = null, tint = BrandPurple) },
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    singleLine = true,
+                    enabled = !isLoading,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("email_confirm_password_input")
+                )
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = {
+                            val clean = emailInput.trim()
+                            if (clean.isBlank() || !Patterns.EMAIL_ADDRESS.matcher(clean).matches()) {
+                                errorMessage = strings.emailInvalid
+                                return@TextButton
+                            }
+                            errorMessage = null
+                            isLoading = true
+                            sendPasswordResetEmail(
+                                email = clean,
+                                isBangla = isBangla,
+                                scope = scope,
+                                onSuccess = {
+                                    isLoading = false
+                                    Toast.makeText(context, strings.passwordResetSentToast, Toast.LENGTH_LONG).show()
+                                },
+                                onError = { msg ->
+                                    isLoading = false
+                                    errorMessage = msg
+                                }
+                            )
+                        },
+                        enabled = !isLoading,
+                        modifier = Modifier.testTag("email_forgot_password_button")
+                    ) {
+                        Text(strings.forgotPasswordAction, style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
+
+            if (errorMessage != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Surface(
+                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.12f),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.ErrorOutline,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = errorMessage.orEmpty(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            }
+
+            if (providerUnavailable) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    color = BrandBlue.copy(alpha = 0.10f),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Info,
+                            contentDescription = null,
+                            tint = BrandBlue,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = strings.emailProviderUnavailableNote,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                OutlinedButton(
+                    onClick = onContinueWithGoogleFallback,
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                        .testTag("email_fallback_google_button")
+                ) {
+                    GoogleGLogo(size = 18.dp)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(strings.loginWithGoogle, fontWeight = FontWeight.Bold)
+                }
+            }
+
             Spacer(modifier = Modifier.height(14.dp))
 
             Button(
                 onClick = {
-                    val clean = emailInput.trim()
-                    if (clean.isBlank() || !Patterns.EMAIL_ADDRESS.matcher(clean).matches()) {
+                    val cleanEmail = emailInput.trim()
+                    if (cleanEmail.isBlank() || !Patterns.EMAIL_ADDRESS.matcher(cleanEmail).matches()) {
                         errorMessage = strings.emailInvalid
                         return@Button
                     }
-                    onContinueEmailAuth(clean)
+                    if (passwordInput.length < 6) {
+                        errorMessage = strings.passwordTooShort
+                        return@Button
+                    }
+                    if (isRegisterMode && passwordInput != confirmPasswordInput) {
+                        errorMessage = strings.passwordMismatch
+                        return@Button
+                    }
+                    errorMessage = null
+                    providerUnavailable = false
+                    isLoading = true
+                    if (isRegisterMode) {
+                        registerWithEmailPassword(
+                            email = cleanEmail,
+                            password = passwordInput,
+                            isBangla = isBangla,
+                            scope = scope,
+                            onAuthSuccess = {
+                                isLoading = false
+                                onEmailAuthSuccess(true)
+                            },
+                            onAuthError = { msg, unavailable ->
+                                isLoading = false
+                                providerUnavailable = unavailable
+                                errorMessage = if (unavailable) null else msg
+                            }
+                        )
+                    } else {
+                        signInWithEmailPassword(
+                            email = cleanEmail,
+                            password = passwordInput,
+                            isBangla = isBangla,
+                            scope = scope,
+                            onAuthSuccess = {
+                                isLoading = false
+                                onEmailAuthSuccess(false)
+                            },
+                            onAuthError = { msg, unavailable ->
+                                isLoading = false
+                                providerUnavailable = unavailable
+                                errorMessage = if (unavailable) null else msg
+                            }
+                        )
+                    }
                 },
+                enabled = !isLoading,
                 shape = CircleShape,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = BrandBlue,
@@ -519,21 +766,21 @@ fun EmailLoginBottomSheet(
                     .height(52.dp)
                     .testTag("email_continue_button")
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(26.dp)
-                        .clip(CircleShape)
-                        .background(Color.White),
-                    contentAlignment = Alignment.Center
-                ) {
-                    GoogleGLogo(size = 18.dp)
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(strings.signingIn, fontWeight = FontWeight.Bold)
+                } else {
+                    Text(
+                        text = if (isRegisterMode) strings.emailRegisterAction else strings.emailSignInAction,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    text = strings.continueWithEmailAction,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold
-                )
             }
 
             Spacer(modifier = Modifier.height(18.dp))
@@ -546,6 +793,7 @@ fun EmailLoginBottomSheet(
 fun CreateAccountChooserSheet(
     onDismiss: () -> Unit,
     onRegisterWithGoogle: () -> Unit,
+    onRegisterWithEmail: () -> Unit,
     onRegisterWithPhone: () -> Unit
 ) {
     val strings = LocalAppStrings.current
@@ -625,7 +873,32 @@ fun CreateAccountChooserSheet(
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+
+            OutlinedButton(
+                onClick = onRegisterWithEmail,
+                shape = CircleShape,
+                border = BorderStroke(1.5.dp, BrandBlue),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = BrandBlue),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp)
+                    .testTag("register_via_email_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Email,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = strings.registerWithEmail,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
 
             OutlinedButton(
                 onClick = onRegisterWithPhone,

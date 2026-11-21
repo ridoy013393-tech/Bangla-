@@ -48,6 +48,7 @@ object AppUpdateChecker {
         "https://github.com/$REPO_SLUG/releases/latest"
 
     private val SEMVER_REGEX = Regex("""(?i)(?:v|version[\s:]*)?(\d+\.\d+(?:\.\d+)?)""")
+    private val EXPLICIT_BODY_SEMVER_REGEX = Regex("""(?i)(?:^|[\s(\[])(?:v|version[\s:]+)(\d+\.\d+(?:\.\d+)?)\b""")
     private val VERSION_CODE_REGEX = Regex("""(?i)(?:versionCode|build|code)[\s:=#]*(\d{1,6})""")
 
     private val client: OkHttpClient by lazy {
@@ -268,7 +269,7 @@ object AppUpdateChecker {
     ): AppUpdateInfo? {
         val extractedName = extractSemVer(tagName)
             ?: extractSemVer(releaseName)
-            ?: extractSemVer(bodyNotes)
+            ?: extractExplicitBodySemVer(bodyNotes)
         val extractedCode = VERSION_CODE_REGEX.find(bodyNotes)?.groupValues?.getOrNull(1)?.toIntOrNull()
             ?: VERSION_CODE_REGEX.find(releaseName)?.groupValues?.getOrNull(1)?.toIntOrNull()
             ?: 0
@@ -288,6 +289,11 @@ object AppUpdateChecker {
     private fun extractSemVer(source: String): String? {
         if (source.isBlank()) return null
         return SEMVER_REGEX.find(source)?.groupValues?.getOrNull(1)?.trim()?.takeIf { it.isNotBlank() }
+    }
+
+    private fun extractExplicitBodySemVer(source: String): String? {
+        if (source.isBlank()) return null
+        return EXPLICIT_BODY_SEMVER_REGEX.find(source)?.groupValues?.getOrNull(1)?.trim()?.takeIf { it.isNotBlank() }
     }
 
     fun pickNewestUpdate(candidates: List<AppUpdateInfo>): AppUpdateInfo? {

@@ -356,3 +356,111 @@ fun signInWithPhoneCredential(
     }
 }
 
+private fun mapEmailAuthError(e: Exception, isBangla: Boolean): Pair<String, Boolean> {
+    val errorCode = (e as? FirebaseAuthException)?.errorCode.orEmpty()
+    val rawMsg = e.localizedMessage.orEmpty()
+    val unavailable = errorCode.equals("ERROR_OPERATION_NOT_ALLOWED", ignoreCase = true) ||
+        rawMsg.contains("operation is not allowed", ignoreCase = true) ||
+        rawMsg.contains("OPERATION_NOT_ALLOWED", ignoreCase = true)
+    if (unavailable) {
+        return rawMsg to true
+    }
+    val friendly = when (errorCode) {
+        "ERROR_INVALID_EMAIL" ->
+            if (isBangla) "সঠিক ইমেইল ঠিকানা দিন।" else "Please enter a valid email address."
+        "ERROR_WRONG_PASSWORD", "ERROR_INVALID_CREDENTIAL" ->
+            if (isBangla) "ইমেইল বা পাসওয়ার্ড সঠিক নয়।" else "Incorrect email or password."
+        "ERROR_USER_NOT_FOUND" ->
+            if (isBangla) "এই ইমেইলে কোনো অ্যাকাউন্ট পাওয়া যায়নি। নতুন অ্যাকাউন্ট তৈরি করুন।" else "No account found with this email. Please sign up first."
+        "ERROR_EMAIL_ALREADY_IN_USE" ->
+            if (isBangla) "এই ইমেইল দিয়ে আগেই অ্যাকাউন্ট খোলা আছে — লগইন করুন।" else "This email is already registered — please sign in."
+        "ERROR_WEAK_PASSWORD" ->
+            if (isBangla) "পাসওয়ার্ডটি দুর্বল — কমপক্ষে ৬ অক্ষরের শক্তিশালী পাসওয়ার্ড দিন।" else "Password is too weak — use at least 6 characters."
+        "ERROR_TOO_MANY_REQUESTS" ->
+            if (isBangla) "অনেকবার চেষ্টা করা হয়েছে — কিছুক্ষণ পর আবার চেষ্টা করুন।" else "Too many attempts — please try again later."
+        "ERROR_NETWORK_REQUEST_FAILED" ->
+            if (isBangla) "ইন্টারনেট সংযোগ চেক করুন।" else "Network error — please check your internet connection."
+        else -> rawMsg.ifBlank {
+            if (isBangla) "ইমেইল লগইন ব্যর্থ হয়েছে।" else "Email authentication failed."
+        }
+    }
+    return friendly to false
+}
+
+/**
+ * Signs in an existing user using Firebase Email & Password authentication.
+ */
+fun signInWithEmailPassword(
+    email: String,
+    password: String,
+    isBangla: Boolean,
+    scope: CoroutineScope,
+    onAuthSuccess: () -> Unit,
+    onAuthError: (message: String, isProviderUnavailable: Boolean) -> Unit
+) {
+    scope.launch {
+        try {
+            Firebase.auth.signInWithEmailAndPassword(email.trim(), password).await()
+            onAuthSuccess()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(AUTH_TAG, "Email/password sign-in failed: ${e.message}", e)
+            val (msg, unavailable) = mapEmailAuthError(e, isBangla)
+            onAuthError(msg, unavailable)
+        }
+    }
+}
+
+/**
+ * Registers a brand-new Firebase Auth user using Email & Password.
+ * Upon success, the user proceeds automatically to RegistrationCompletionScreen
+ * to set their Display Name, Phone Number, and unique @username.
+ */
+fun registerWithEmailPassword(
+    email: String,
+    password: String,
+    isBangla: Boolean,
+    scope: CoroutineScope,
+    onAuthSuccess: () -> Unit,
+    onAuthError: (message: String, isProviderUnavailable: Boolean) -> Unit
+) {
+    scope.launch {
+        try {
+            Firebase.auth.createUserWithEmailAndPassword(email.trim(), password).await()
+            onAuthSuccess()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(AUTH_TAG, "Email/password registration failed: ${e.message}", e)
+            val (msg, unavailable) = mapEmailAuthError(e, isBangla)
+            onAuthError(msg, unavailable)
+        }
+    }
+}
+
+/**
+ * Sends a Firebase password reset link to the specified email address.
+ */
+fun sendPasswordResetEmail(
+    email: String,
+    isBangla: Boolean,
+    scope: CoroutineScope,
+    onSuccess: () -> Unit,
+    onError: (String) -> Unit
+) {
+    scope.launch {
+        try {
+            Firebase.auth.sendPasswordResetEmail(email.trim()).await()
+            onSuccess()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(AUTH_TAG, "Password reset failed: ${e.message}", e)
+            val (msg, _) = mapEmailAuthError(e, isBangla)
+            onError(msg)
+        }
+    }
+}
+
+

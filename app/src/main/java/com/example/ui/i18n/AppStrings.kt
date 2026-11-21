@@ -594,6 +594,22 @@ interface AppStrings {
     val downloadLinkCopiedToast: String
     val shareAppChooserTitle: String
     val shareAppFailedToast: String
+    // v2.0 Animated Splash & Real Email/Password Auth
+    val splashConnectingStatus: String
+    val passwordLabel: String
+    val confirmPasswordLabel: String
+    val passwordTooShort: String
+    val passwordMismatch: String
+    val emailTabLogin: String
+    val emailTabRegister: String
+    val emailSignInAction: String
+    val emailRegisterAction: String
+    val forgotPasswordAction: String
+    val passwordResetSentToast: String
+    val emailProviderUnavailableNote: String
+    val registerWithEmail: String
+    val showPasswordDesc: String
+    val hidePasswordDesc: String
 }
 
 object BanglaStrings : AppStrings {
@@ -1158,6 +1174,21 @@ object BanglaStrings : AppStrings {
     override val downloadLinkCopiedToast = "সরাসরি ডাউনলোড লিংক কপি হয়েছে"
     override val shareAppChooserTitle = "Bangla Chat ডাউনলোড লিংক শেয়ার করুন"
     override val shareAppFailedToast = "শেয়ার অপশন খোলা যায়নি"
+    override val splashConnectingStatus = "নিরাপদ সংযোগ তৈরি হচ্ছে..."
+    override val passwordLabel = "পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর)"
+    override val confirmPasswordLabel = "পুনরায় পাসওয়ার্ড দিন"
+    override val passwordTooShort = "পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে"
+    override val passwordMismatch = "দুইবারের পাসওয়ার্ড মেলেনি"
+    override val emailTabLogin = "লগইন"
+    override val emailTabRegister = "নতুন অ্যাকাউন্ট"
+    override val emailSignInAction = "ইমেইল ও পাসওয়ার্ড দিয়ে লগইন"
+    override val emailRegisterAction = "ইমেইল দিয়ে অ্যাকাউন্ট খুলুন"
+    override val forgotPasswordAction = "পাসওয়ার্ড ভুলে গেছেন?"
+    override val passwordResetSentToast = "পাসওয়ার্ড রিসেট লিংক আপনার ইমেইলে পাঠানো হয়েছে"
+    override val emailProviderUnavailableNote = "Firebase Console-এ Email/Password লগইন এখনো চালু করা হয়নি। নিচে ট্যাপ করে সরাসরি Google দিয়ে লগইন করতে পারবেন।"
+    override val registerWithEmail = "ইমেইল ও পাসওয়ার্ড দিয়ে অ্যাকাউন্ট খুলুন"
+    override val showPasswordDesc = "পাসওয়ার্ড দেখুন"
+    override val hidePasswordDesc = "পাসওয়ার্ড লুকান"
 }
 
 object EnglishStrings : AppStrings {
@@ -1722,6 +1753,21 @@ object EnglishStrings : AppStrings {
     override val downloadLinkCopiedToast = "Direct APK download link copied"
     override val shareAppChooserTitle = "Share Bangla Chat download link"
     override val shareAppFailedToast = "Unable to open share menu"
+    override val splashConnectingStatus = "Establishing secure connection..."
+    override val passwordLabel = "Password (min 6 characters)"
+    override val confirmPasswordLabel = "Confirm Password"
+    override val passwordTooShort = "Password must be at least 6 characters"
+    override val passwordMismatch = "Passwords do not match"
+    override val emailTabLogin = "Sign In"
+    override val emailTabRegister = "Sign Up"
+    override val emailSignInAction = "Sign In with Email"
+    override val emailRegisterAction = "Create Account with Email"
+    override val forgotPasswordAction = "Forgot password?"
+    override val passwordResetSentToast = "Password reset link sent to your email"
+    override val emailProviderUnavailableNote = "Email/Password sign-in is not enabled in Firebase Console yet. Tap below to sign in instantly with Google."
+    override val registerWithEmail = "Sign up with Email & Password"
+    override val showPasswordDesc = "Show password"
+    override val hidePasswordDesc = "Hide password"
 }
 
 fun stringsForLanguage(language: AppLanguage): AppStrings =

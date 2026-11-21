@@ -73,10 +73,13 @@ import com.example.service.NotificationHelper
 import com.example.ui.components.BanglaChatLogoMark
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.i18n.stringsForLanguage
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import com.example.ui.screens.AccountSuspendedScreen
 import com.example.ui.screens.ActiveCallRequest
 import com.example.ui.screens.AdminModerationScreen
 import com.example.ui.screens.AiAssistantScreen
+import com.example.ui.screens.AnimatedSplashScreen
 import com.example.ui.screens.AppLockScreen
 import com.example.ui.screens.AuthEntryMode
 import com.example.ui.screens.AuthScreen
@@ -114,11 +117,20 @@ class MainActivity : FragmentActivity() {
             val context = LocalContext.current
             val app = remember(context) { context.applicationContext as BanglaChatApplication }
             val prefsRepository = app.preferencesRepository
-            val preferences by prefsRepository.preferencesFlow
-                .collectAsStateWithLifecycle(initialValue = UserPreferences())
+            val loadedPreferences by prefsRepository.preferencesFlow
+                .collectAsStateWithLifecycle(initialValue = null)
+            val preferences = loadedPreferences ?: UserPreferences()
             val pendingChatId by deepLinkChatId.collectAsStateWithLifecycle()
             val pendingAcceptCallId by deepLinkAcceptCallId.collectAsStateWithLifecycle()
             val scope = rememberCoroutineScope()
+
+            // Brief branded splash showcase on cold launch so the animated intro plays smoothly
+            // and DataStore preferences finish loading before any Home/Banner/AppLock UI renders
+            var splashIntroFinished by rememberSaveable { mutableStateOf(false) }
+            LaunchedEffect(Unit) {
+                delay(1150L)
+                splashIntroFinished = true
+            }
 
             // Only update FLAG_SECURE when the actual window flag state differs to avoid redundant WMS surface syncs
             LaunchedEffect(preferences.screenSecurityEnabled) {
@@ -154,25 +166,35 @@ class MainActivity : FragmentActivity() {
                 }
             }
 
+            val showInitialSplash = !splashIntroFinished || loadedPreferences == null
+
             BanglaChatTheme(themePreference = preferences.theme) {
                 CompositionLocalProvider(
                     LocalAppStrings provides stringsForLanguage(preferences.language)
                 ) {
-                    if (preferences.appLockEnabled && !isUnlocked) {
-                        AppLockScreen(
-                            expectedPinHash = preferences.appLockPinHash,
-                            biometricEnabled = preferences.biometricLockEnabled,
-                            onUnlocked = { isUnlocked = true }
-                        )
-                    } else {
-                        BanglaChatAppRoot(
-                            preferences = preferences,
-                            pendingDeepLinkChatId = pendingChatId,
-                            onConsumeDeepLink = { deepLinkChatId.value = null },
-                            pendingAcceptCallId = pendingAcceptCallId,
-                            onConsumeAcceptCall = { deepLinkAcceptCallId.value = null },
-                            onSetLanguage = { lang -> scope.launch { prefsRepository.setLanguage(lang) } }
-                        )
+                    Crossfade(
+                        targetState = showInitialSplash,
+                        animationSpec = tween(durationMillis = 360),
+                        label = "root_splash_transition"
+                    ) { showingSplash ->
+                        if (showingSplash) {
+                            AnimatedSplashScreen()
+                        } else if (preferences.appLockEnabled && !isUnlocked) {
+                            AppLockScreen(
+                                expectedPinHash = preferences.appLockPinHash,
+                                biometricEnabled = preferences.biometricLockEnabled,
+                                onUnlocked = { isUnlocked = true }
+                            )
+                        } else {
+                            BanglaChatAppRoot(
+                                preferences = preferences,
+                                pendingDeepLinkChatId = pendingChatId,
+                                onConsumeDeepLink = { deepLinkChatId.value = null },
+                                pendingAcceptCallId = pendingAcceptCallId,
+                                onConsumeAcceptCall = { deepLinkAcceptCallId.value = null },
+                                onSetLanguage = { lang -> scope.launch { prefsRepository.setLanguage(lang) } }
+                            )
+                        }
                     }
                 }
             }
@@ -232,6 +254,8 @@ private fun BanglaChatAppRoot(
         if (currentUser == null) {
             preLoginUpdateState = UpdateCheckResult.Checking
             preLoginUpdateState = AppUpdateChecker.checkForUpdate()
+        } else {
+            preLoginUpdateState = UpdateCheckResult.Idle
         }
     }
 
@@ -303,23 +327,7 @@ private fun BanglaChatAppRoot(
 
         when (val state = registrationState) {
             AccountRegistrationState.Checking -> {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    BanglaChatLogoMark(size = 84.dp)
-                    Spacer(modifier = Modifier.height(20.dp))
-                    CircularProgressIndicator(color = BrandBlue)
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Text(
-                        text = strings.checkingAccount,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                AnimatedSplashScreen(statusText = strings.checkingAccount)
             }
 
             is AccountRegistrationState.Error -> {

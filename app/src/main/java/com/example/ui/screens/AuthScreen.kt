@@ -122,6 +122,7 @@ fun AuthScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showPhoneSheet by remember { mutableStateOf(false) }
     var showEmailSheet by remember { mutableStateOf(false) }
+    var emailSheetStartInRegister by remember { mutableStateOf(false) }
     var showCreateAccountSheet by remember { mutableStateOf(false) }
 
     val skyBackgroundBrush = if (isDark) {
@@ -364,6 +365,7 @@ fun AuthScreen(
                         if (loadingChannel == null) {
                             errorMessage = null
                             onSelectAuthMode(AuthEntryMode.LOGIN)
+                            emailSheetStartInRegister = false
                             showEmailSheet = true
                         }
                     },
@@ -561,10 +563,20 @@ fun AuthScreen(
 
     if (showEmailSheet) {
         EmailLoginBottomSheet(
+            currentLanguage = currentLanguage,
+            initialRegisterMode = emailSheetStartInRegister,
             onDismiss = { showEmailSheet = false },
-            onContinueEmailAuth = {
+            onEmailAuthSuccess = { isNewAccount ->
                 showEmailSheet = false
-                launchGoogleAuth(AuthEntryMode.LOGIN, AuthLoadingChannel.EMAIL)
+                onSelectAuthMode(if (isNewAccount) AuthEntryMode.REGISTER else AuthEntryMode.LOGIN)
+                onAuthSuccess()
+            },
+            onContinueWithGoogleFallback = {
+                showEmailSheet = false
+                launchGoogleAuth(
+                    mode = if (emailSheetStartInRegister) AuthEntryMode.REGISTER else AuthEntryMode.LOGIN,
+                    channel = AuthLoadingChannel.EMAIL
+                )
             }
         )
     }
@@ -575,6 +587,12 @@ fun AuthScreen(
             onRegisterWithGoogle = {
                 showCreateAccountSheet = false
                 launchGoogleAuth(AuthEntryMode.REGISTER, AuthLoadingChannel.REGISTER)
+            },
+            onRegisterWithEmail = {
+                showCreateAccountSheet = false
+                onSelectAuthMode(AuthEntryMode.REGISTER)
+                emailSheetStartInRegister = true
+                showEmailSheet = true
             },
             onRegisterWithPhone = {
                 showCreateAccountSheet = false
