@@ -586,6 +586,14 @@ interface AppStrings {
     val adminAppUpdateNotesHint: String
     val adminAppUpdateSaveAction: String
     val adminAppUpdateSavedToast: String
+    // Direct App Share (APK Download Link)
+    val shareAppTitle: String
+    val shareAppSubtitle: String
+    val shareAppAction: String
+    val copyDownloadLinkAction: String
+    val downloadLinkCopiedToast: String
+    val shareAppChooserTitle: String
+    val shareAppFailedToast: String
 }
 
 object BanglaStrings : AppStrings {
@@ -1143,6 +1151,13 @@ object BanglaStrings : AppStrings {
     override val adminAppUpdateNotesHint = "আপডেট নোট / নতুন ফিচার..."
     override val adminAppUpdateSaveAction = "আপডেট কনফিগ সেভ করুন"
     override val adminAppUpdateSavedToast = "অ্যাপ আপডেট কনফিগ সংরক্ষিত হয়েছে"
+    override val shareAppTitle = "অ্যাপ শেয়ার করুন"
+    override val shareAppSubtitle = "লিংক পাঠান — ক্লিক করলেই সরাসরি অ্যাপ ডাউনলোড শুরু হবে"
+    override val shareAppAction = "অ্যাপ শেয়ার করুন"
+    override val copyDownloadLinkAction = "লিংক কপি"
+    override val downloadLinkCopiedToast = "সরাসরি ডাউনলোড লিংক কপি হয়েছে"
+    override val shareAppChooserTitle = "Bangla Chat ডাউনলোড লিংক শেয়ার করুন"
+    override val shareAppFailedToast = "শেয়ার অপশন খোলা যায়নি"
 }
 
 object EnglishStrings : AppStrings {
@@ -1700,6 +1715,13 @@ object EnglishStrings : AppStrings {
     override val adminAppUpdateNotesHint = "Release notes / changelog..."
     override val adminAppUpdateSaveAction = "Save Update Config"
     override val adminAppUpdateSavedToast = "App update config saved"
+    override val shareAppTitle = "Share Bangla Chat"
+    override val shareAppSubtitle = "Send a direct link — tapping it downloads the APK right away"
+    override val shareAppAction = "Share App"
+    override val copyDownloadLinkAction = "Copy Link"
+    override val downloadLinkCopiedToast = "Direct APK download link copied"
+    override val shareAppChooserTitle = "Share Bangla Chat download link"
+    override val shareAppFailedToast = "Unable to open share menu"
 }
 
 fun stringsForLanguage(language: AppLanguage): AppStrings =

@@ -25,9 +25,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.AdminPanelSettings
 import androidx.compose.material.icons.rounded.Download
-import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material3.Button
@@ -273,7 +273,7 @@ fun ForceUpdateScreen(
                             .testTag("force_update_release_page_button")
                     ) {
                         Icon(
-                            imageVector = Icons.Rounded.OpenInNew,
+                            imageVector = Icons.AutoMirrored.Rounded.OpenInNew,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp)
                         )

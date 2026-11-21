@@ -128,6 +128,7 @@ object QrPayloadCodec {
 @Composable
 fun MyQrCodeSheet(
     profile: PublicProfile,
+    directApkDownloadUrl: String = com.example.data.AppUpdateChecker.FALLBACK_APK_URL,
     onOpenScanner: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -222,7 +223,8 @@ fun MyQrCodeSheet(
             ) {
                 FilledTonalButton(
                     onClick = {
-                        val shareText = "Bangla Chat-এ আমার সাথে যুক্ত হোন: @${profile.username}\n$payload"
+                        val shareText = "Bangla Chat-এ আমার সাথে যুক্ত হোন: @${profile.username}\n\n" +
+                            "সরাসরি অ্যাপ ডাউনলোড (APK):\n$directApkDownloadUrl"
                         val intent = Intent(Intent.ACTION_SEND).apply {
                             type = "text/plain"
                             putExtra(Intent.EXTRA_TEXT, shareText)

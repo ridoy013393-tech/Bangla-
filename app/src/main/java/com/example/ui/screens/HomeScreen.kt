@@ -41,6 +41,7 @@ import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.GroupAdd
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -70,12 +71,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.AppUpdateChecker
 import com.example.data.UpdateCheckResult
 import com.example.model.AppLanguage
 import com.example.model.Chat
@@ -94,6 +97,7 @@ import com.example.ui.components.UserAvatar
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.BrandBlue
 import com.example.ui.theme.BrandPurple
+import com.example.ui.theme.OnlineGreen
 import com.example.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
 
@@ -110,6 +114,7 @@ fun HomeScreen(
     onDeleteAccount: () -> Unit
 ) {
     val strings = LocalAppStrings.current
+    val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -127,8 +132,13 @@ fun HomeScreen(
     val avatarUploadState by viewModel.avatarUploadState.collectAsStateWithLifecycle()
     val usernameSearchState by viewModel.usernameSearchState.collectAsStateWithLifecycle()
     val updateCheckResult by viewModel.updateCheckResult.collectAsStateWithLifecycle()
+    val appUpdateConfig by viewModel.appUpdateConfig.collectAsStateWithLifecycle()
     val adminReports by viewModel.adminAllReports.collectAsStateWithLifecycle()
     val appBroadcast by viewModel.appBroadcast.collectAsStateWithLifecycle()
+
+    val directApkDownloadUrl = remember(appUpdateConfig) {
+        AppUpdateChecker.resolveDirectApkUrl(appUpdateConfig)
+    }
 
     var selectedTab by rememberSaveable { mutableStateOf(HomeTab.CHATS) }
     var selectedChatFilter by rememberSaveable { mutableStateOf(ChatListFilter.ALL) }
@@ -566,6 +576,7 @@ fun HomeScreen(
                                 viewModel.setBiometricLockEnabled(enabled)
                             },
                             isCheckingUpdate = updateCheckResult is UpdateCheckResult.Checking,
+                            directApkDownloadUrl = directApkDownloadUrl,
                             onOpenMyQr = { showMyQrSheet = true },
                             onCheckForUpdates = {
                                 viewModel.checkForAppUpdate(
@@ -701,6 +712,68 @@ fun HomeScreen(
                     }
                 }
 
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(18.dp))
+                        .clickable {
+                            showNewActionSheet = false
+                            val shareText = AppUpdateChecker.buildAppShareMessage(
+                                downloadUrl = directApkDownloadUrl,
+                                username = myProfile?.username.orEmpty(),
+                                isBangla = preferences.language == AppLanguage.BANGLA
+                            )
+                            val opened = AppUpdateChecker.shareAppDownloadLink(
+                                context = context,
+                                chooserTitle = strings.shareAppChooserTitle,
+                                shareText = shareText
+                            )
+                            if (!opened) {
+                                scope.launch { snackbarHostState.showSnackbar(strings.shareAppFailedToast) }
+                            }
+                        }
+                        .testTag("new_action_share_app_row")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(OnlineGreen.copy(alpha = 0.16f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Share,
+                                contentDescription = strings.shareAppTitle,
+                                tint = OnlineGreen
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = strings.shareAppTitle,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = strings.shareAppSubtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Rounded.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(18.dp))
             }
         }
@@ -752,6 +825,7 @@ fun HomeScreen(
         myProfile?.let { activeProfile ->
             MyQrCodeSheet(
                 profile = activeProfile,
+                directApkDownloadUrl = directApkDownloadUrl,
                 onOpenScanner = {
                     showMyQrSheet = false
                     showQrScannerDialog = true

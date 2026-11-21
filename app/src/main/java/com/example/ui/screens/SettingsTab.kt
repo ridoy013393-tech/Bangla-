@@ -1,6 +1,9 @@
 package com.example.ui.screens
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -38,6 +41,7 @@ import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Code
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Description
@@ -54,6 +58,7 @@ import androidx.compose.material.icons.rounded.PrivacyTip
 import androidx.compose.material.icons.rounded.QrCode2
 import androidx.compose.material.icons.rounded.ScreenshotMonitor
 import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material.icons.rounded.Wallpaper
@@ -88,10 +93,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.example.BuildConfig
+import com.example.data.AppUpdateChecker
 import com.example.data.BiometricAuthHelper
 import com.example.model.AppLanguage
 import com.example.model.BlockedUser
@@ -134,6 +141,7 @@ fun SettingsTab(
     onDisableAppLock: () -> Unit,
     onToggleBiometricLock: (Boolean) -> Unit = {},
     isCheckingUpdate: Boolean = false,
+    directApkDownloadUrl: String = AppUpdateChecker.FALLBACK_APK_URL,
     onOpenMyQr: () -> Unit = {},
     onCheckForUpdates: () -> Unit = {},
     isSuperAdmin: Boolean = false,
@@ -273,6 +281,115 @@ fun SettingsTab(
                                 .testTag("settings_my_qr_button")
                         ) {
                             Icon(Icons.Rounded.QrCode2, contentDescription = strings.myQrCodeAction, tint = BrandBlue)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Direct APK Share Card (one tap shares direct download link)
+        item(key = "share_app_card") {
+            val isBangla = preferences.language == AppLanguage.BANGLA
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = BrandBlue.copy(alpha = 0.09f)
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("settings_share_app_card")
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        SettingsLeadingBadge(
+                            icon = Icons.Rounded.Share,
+                            tint = BrandBlue
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = strings.shareAppTitle,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = strings.shareAppSubtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = directApkDownloadUrl,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = BrandBlue,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                val text = AppUpdateChecker.buildAppShareMessage(
+                                    downloadUrl = directApkDownloadUrl,
+                                    username = myProfile?.username.orEmpty(),
+                                    isBangla = isBangla
+                                )
+                                val ok = AppUpdateChecker.shareAppDownloadLink(
+                                    context = context,
+                                    chooserTitle = strings.shareAppChooserTitle,
+                                    shareText = text
+                                )
+                                if (!ok) {
+                                    Toast.makeText(context, strings.shareAppFailedToast, Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            shape = RoundedCornerShape(20.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = BrandBlue,
+                                contentColor = Color.White
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                                .testTag("settings_share_app_button")
+                        ) {
+                            Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(strings.shareAppAction, maxLines = 1, fontWeight = FontWeight.SemiBold)
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                clipboard?.setPrimaryClip(ClipData.newPlainText("Bangla Chat APK", directApkDownloadUrl))
+                                Toast.makeText(context, strings.downloadLinkCopiedToast, Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(20.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp),
+                            modifier = Modifier
+                                .height(48.dp)
+                                .testTag("settings_copy_download_link_button")
+                        ) {
+                            Icon(Icons.Rounded.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(strings.copyDownloadLinkAction, maxLines = 1)
                         }
                     }
                 }

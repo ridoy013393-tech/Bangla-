@@ -223,6 +223,23 @@ class ExampleUnitTest {
 
         val winner = com.example.data.AppUpdateChecker.pickNewestUpdate(listOf(parsedRelease, evaluated))
         assertEquals(10, winner?.latestVersionCode)
+
+        // Direct APK share link resolution & share text formatting
+        assertEquals(
+            com.example.data.AppUpdateChecker.FALLBACK_APK_URL,
+            com.example.data.AppUpdateChecker.resolveDirectApkUrl(null)
+        )
+        assertEquals(
+            "https://example.com/BanglaChat.apk",
+            com.example.data.AppUpdateChecker.resolveDirectApkUrl(fsConfig)
+        )
+        val bnShare = com.example.data.AppUpdateChecker.buildAppShareMessage(
+            downloadUrl = "https://example.com/BanglaChat.apk",
+            username = "@ridoy",
+            isBangla = true
+        )
+        assertTrue(bnShare.contains("https://example.com/BanglaChat.apk"))
+        assertTrue(bnShare.contains("@ridoy"))
     }
 
     @Test

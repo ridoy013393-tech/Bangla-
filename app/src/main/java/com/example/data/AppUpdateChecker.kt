@@ -368,4 +368,69 @@ object AppUpdateChecker {
             true
         }.getOrDefault(false)
     }
+
+    /**
+     * Resolves the best direct `.apk` download link to share with friends.
+     * Uses the live Super Admin configured APK URL when valid, otherwise falls back
+     * to the permanent rolling `latest-apk/BanglaChat.apk` direct download URL.
+     */
+    fun resolveDirectApkUrl(config: AppUpdateConfig? = null): String {
+        val customUrl = config?.apkUrl?.trim().orEmpty()
+        return if (customUrl.startsWith("https://", ignoreCase = true) ||
+            customUrl.startsWith("http://", ignoreCase = true)
+        ) {
+            customUrl
+        } else {
+            FALLBACK_APK_URL
+        }
+    }
+
+    /**
+     * Formats a clean invite message containing the direct APK download URL so recipients
+     * go straight to downloading the app upon tapping the link.
+     */
+    fun buildAppShareMessage(
+        downloadUrl: String,
+        username: String = "",
+        isBangla: Boolean = true
+    ): String {
+        val cleanUrl = downloadUrl.trim().ifBlank { FALLBACK_APK_URL }
+        val cleanUsername = username.trim().removePrefix("@")
+        return if (isBangla) {
+            buildString {
+                append("Bangla Chat অ্যাপ ডাউনলোড করুন — নিরাপদ, দ্রুত ও বিজ্ঞাপন-মুক্ত বাংলা চ্যাট অ্যাপ!\n\n")
+                append("সরাসরি ডাউনলোড লিংক (APK):\n")
+                append(cleanUrl)
+                if (cleanUsername.isNotBlank()) {
+                    append("\n\nঅ্যাপ ইনস্টল করে আমাকে খুঁজুন: @$cleanUsername")
+                }
+            }
+        } else {
+            buildString {
+                append("Download Bangla Chat — fast, secure & ad-free Bangla messaging app!\n\n")
+                append("Direct APK Download:\n")
+                append(cleanUrl)
+                if (cleanUsername.isNotBlank()) {
+                    append("\n\nFind me on Bangla Chat: @$cleanUsername")
+                }
+            }
+        }
+    }
+
+    fun shareAppDownloadLink(
+        context: Context,
+        chooserTitle: String,
+        shareText: String
+    ): Boolean = runCatching {
+        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "Bangla Chat APK Download")
+            putExtra(Intent.EXTRA_TEXT, shareText)
+        }
+        val chooser = Intent.createChooser(sendIntent, chooserTitle).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(chooser)
+        true
+    }.getOrDefault(false)
 }
