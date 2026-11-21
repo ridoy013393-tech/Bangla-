@@ -6,6 +6,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.AiAssistantRepository
 import com.example.data.BanglaChatRepository
+import com.example.data.ContentModerationEngine
+import com.example.data.MessageModerationOutcome
+import com.example.data.ModerationViolationType
 import com.example.data.StorageRepository
 import com.example.data.extractFirestoreRootError
 import com.example.model.AiRewriteTone
@@ -13,6 +16,7 @@ import com.example.model.AiTaskState
 import com.example.model.AppLanguage
 import com.example.model.Chat
 import com.example.model.ChatMessage
+import com.example.model.ModerationSettings
 import com.example.model.PublicProfile
 import com.example.model.UiState
 import com.example.model.UploadState
@@ -108,6 +112,14 @@ class ChatViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
 
+    val moderationSettings: StateFlow<ModerationSettings> = repository.observeModerationSettings()
+        .catch { error ->
+            val root = extractFirestoreRootError(error)
+            if (root == null && error is CancellationException) throw error
+            emit(ModerationSettings())
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), ModerationSettings())
+
     val messagesState: StateFlow<UiState<List<ChatMessage>>> = _pageLimit
         .flatMapLatest { limit ->
             repository.observeMessages(chatId, currentUserId, limit)
@@ -136,12 +148,47 @@ class ChatViewModel(
         _editingMessage.value = message
     }
 
-    fun saveEditedMessage(newText: String) {
+    fun saveEditedMessage(
+        newText: String,
+        senderProfile: PublicProfile? = null,
+        language: AppLanguage = AppLanguage.BANGLA
+    ) {
         val target = _editingMessage.value ?: return
-        _editingMessage.value = null
-        viewModelScope.launch {
-            repository.editOwnMessage(chatId, target.id, newText)
-                .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Edit failed") }
+        val settings = moderationSettings.value
+        val outcome = ContentModerationEngine.evaluateOutgoingMessage(
+            senderUid = currentUserId,
+            rawText = newText,
+            settings = settings.copy(spamProtectionEnabled = false)
+        )
+        when (outcome) {
+            is MessageModerationOutcome.Block -> {
+                _snackbarEvents.tryEmit(formatViolationWarning(outcome.violationType, outcome.cooldownSeconds, language))
+                if (outcome.shouldAlertAdmin && senderProfile != null) {
+                    viewModelScope.launch {
+                        repository.notifyAutoModerationViolation(
+                            senderProfile = senderProfile,
+                            violationType = outcome.violationType,
+                            flaggedSnippet = newText,
+                            matchedWords = outcome.matchedWords,
+                            chatId = chatId
+                        )
+                    }
+                }
+                return
+            }
+            is MessageModerationOutcome.Allow -> {
+                _editingMessage.value = null
+                if (outcome.wasMasked) {
+                    _snackbarEvents.tryEmit(
+                        if (language == AppLanguage.BANGLA) "অশ্লীল শব্দ স্বয়ংক্রিয়ভাবে ফিল্টার করা হয়েছে"
+                        else "Restricted words were automatically masked"
+                    )
+                }
+                viewModelScope.launch {
+                    repository.editOwnMessage(chatId, target.id, outcome.finalText)
+                        .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Edit failed") }
+                }
+            }
         }
     }
 
@@ -171,8 +218,81 @@ class ChatViewModel(
         }
     }
 
-    fun sendTextMessage(senderProfile: PublicProfile, text: String) {
+    private fun formatViolationWarning(
+        type: ModerationViolationType,
+        cooldownSeconds: Int,
+        language: AppLanguage
+    ): String = when (type) {
+        ModerationViolationType.PROFANITY -> if (language == AppLanguage.BANGLA) {
+            "অশ্লীল বা নিষিদ্ধ শব্দ ব্যবহার করায় মেসেজটি পাঠানো যায়নি।"
+        } else {
+            "Message blocked: prohibited or abusive language detected."
+        }
+        ModerationViolationType.BURST_SPAM -> if (language == AppLanguage.BANGLA) {
+            "অনেক দ্রুত মেসেজ পাঠাচ্ছেন! দয়া করে ${cooldownSeconds.coerceAtLeast(3)} সেকেন্ড অপেক্ষা করুন।"
+        } else {
+            "You're sending messages too fast. Please wait ${cooldownSeconds.coerceAtLeast(3)}s."
+        }
+        ModerationViolationType.DUPLICATE_SPAM -> if (language == AppLanguage.BANGLA) {
+            "একই মেসেজ বারবার স্প্যাম করা নিষিদ্ধ।"
+        } else {
+            "Repeated duplicate spam messages are blocked."
+        }
+    }
+
+    fun sendTextMessage(
+        senderProfile: PublicProfile,
+        text: String,
+        language: AppLanguage = AppLanguage.BANGLA
+    ) {
         val currentChat = chat.value ?: return
+        val settings = moderationSettings.value
+        val outcome = ContentModerationEngine.evaluateOutgoingMessage(
+            senderUid = currentUserId,
+            rawText = text,
+            settings = settings
+        )
+
+        val finalMessageText = when (outcome) {
+            is MessageModerationOutcome.Block -> {
+                _snackbarEvents.tryEmit(
+                    formatViolationWarning(outcome.violationType, outcome.cooldownSeconds, language)
+                )
+                if (outcome.shouldAlertAdmin) {
+                    viewModelScope.launch {
+                        repository.notifyAutoModerationViolation(
+                            senderProfile = senderProfile,
+                            violationType = outcome.violationType,
+                            flaggedSnippet = text,
+                            matchedWords = outcome.matchedWords,
+                            chatId = chatId
+                        )
+                    }
+                }
+                return
+            }
+            is MessageModerationOutcome.Allow -> {
+                if (outcome.wasMasked) {
+                    _snackbarEvents.tryEmit(
+                        if (language == AppLanguage.BANGLA) "অশ্লীল শব্দ স্বয়ংক্রিয়ভাবে ফিল্টার করা হয়েছে"
+                        else "Restricted words were automatically masked"
+                    )
+                }
+                if (outcome.shouldAlertAdmin && outcome.violationType != null) {
+                    viewModelScope.launch {
+                        repository.notifyAutoModerationViolation(
+                            senderProfile = senderProfile,
+                            violationType = outcome.violationType,
+                            flaggedSnippet = text,
+                            matchedWords = outcome.matchedWords,
+                            chatId = chatId
+                        )
+                    }
+                }
+                outcome.finalText
+            }
+        }
+
         val reply = _replyTarget.value
         val replySender = reply?.let { r ->
             if (r.senderId == currentUserId) senderProfile.name
@@ -185,7 +305,7 @@ class ChatViewModel(
             repository.sendMessage(
                 chat = currentChat,
                 senderProfile = senderProfile,
-                text = text,
+                text = finalMessageText,
                 type = "text",
                 replyTo = reply,
                 replySenderName = replySender

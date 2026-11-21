@@ -39,6 +39,7 @@ import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.GppBad
 import androidx.compose.material.icons.rounded.Phone
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material.icons.rounded.VolumeOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -78,11 +79,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.model.AppBroadcast
 import com.example.model.AppLanguage
+import com.example.model.ModerationSettings
 import com.example.model.ModerationStatus
 import com.example.model.PublicProfile
 import com.example.model.UserReport
 import com.example.ui.components.UserAvatar
+import com.example.ui.components.VerifiedBadge
 import com.example.ui.components.formatFullDate
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.BrandBlue
@@ -217,11 +221,16 @@ fun AdminModerationScreen(
     profiles: List<PublicProfile>,
     moderations: List<ModerationStatus>,
     reports: List<UserReport>,
+    currentBroadcast: AppBroadcast?,
+    currentModerationSettings: ModerationSettings,
     language: AppLanguage,
     onBanUser: (uid: String, name: String, username: String, reason: String) -> Unit,
     onMuteUser: (uid: String, name: String, username: String, hours: Long, reason: String) -> Unit,
     onUnbanUser: (uid: String, name: String, username: String) -> Unit,
     onDeleteUser: (uid: String, name: String, username: String, reason: String) -> Unit,
+    onSetVerifiedBadge: (uid: String, name: String, username: String, verified: Boolean) -> Unit,
+    onPublishBroadcast: (active: Boolean, title: String, message: String, severity: String) -> Unit,
+    onSaveModerationSettings: (ModerationSettings) -> Unit,
     onDismissReport: (reportId: String) -> Unit,
     onBack: () -> Unit
 ) {
@@ -312,14 +321,38 @@ fun AdminModerationScreen(
                         Tab(
                             selected = selectedTab == 0,
                             onClick = { selectedTab = 0 },
-                            text = { Text("${strings.adminUsersTab} (${combinedUserEntries.size})") },
+                            text = {
+                                Text(
+                                    text = "${strings.adminUsersTab} (${combinedUserEntries.size})",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
                             modifier = Modifier.testTag("admin_tab_users")
                         )
                         Tab(
                             selected = selectedTab == 1,
                             onClick = { selectedTab = 1 },
-                            text = { Text("${strings.adminReportsTab} (${reports.size})") },
+                            text = {
+                                Text(
+                                    text = "${strings.adminReportsTab} (${reports.size})",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
                             modifier = Modifier.testTag("admin_tab_reports")
+                        )
+                        Tab(
+                            selected = selectedTab == 2,
+                            onClick = { selectedTab = 2 },
+                            text = {
+                                Text(
+                                    text = strings.adminBroadcastFilterTab,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
+                            modifier = Modifier.testTag("admin_tab_broadcast_filter")
                         )
                     }
                 }
@@ -398,12 +431,22 @@ fun AdminModerationScreen(
                                     name = profile?.name.orEmpty().ifBlank { uid },
                                     username = profile?.username.orEmpty()
                                 )
+                            },
+                            onToggleVerifiedClick = {
+                                if (profile != null) {
+                                    onSetVerifiedBadge(
+                                        uid,
+                                        profile.name.ifBlank { uid },
+                                        profile.username,
+                                        !profile.verified
+                                    )
+                                }
                             }
                         )
                     }
                     item { Spacer(modifier = Modifier.height(24.dp)) }
                 }
-            } else {
+            } else if (selectedTab == 1) {
                 if (reports.isEmpty()) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
@@ -535,6 +578,13 @@ fun AdminModerationScreen(
                         }
                     }
                 }
+            } else {
+                AdminBroadcastAndFilterTab(
+                    currentBroadcast = currentBroadcast,
+                    currentModerationSettings = currentModerationSettings,
+                    onPublishBroadcast = onPublishBroadcast,
+                    onSaveModerationSettings = onSaveModerationSettings
+                )
             }
         }
     }
@@ -622,7 +672,8 @@ private fun AdminUserModerationCard(
     onMuteClick: () -> Unit,
     onBanClick: () -> Unit,
     onUnbanClick: () -> Unit,
-    onDeleteClick: () -> Unit
+    onDeleteClick: () -> Unit,
+    onToggleVerifiedClick: () -> Unit
 ) {
     val strings = LocalAppStrings.current
     val nowMs = System.currentTimeMillis()
@@ -663,6 +714,13 @@ private fun AdminUserModerationCard(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f, fill = false)
                         )
+                        if (profile?.verified == true) {
+                            Spacer(modifier = Modifier.width(5.dp))
+                            VerifiedBadge(
+                                contentDescription = strings.verifiedBadgeDesc,
+                                size = 18.dp
+                            )
+                        }
                         Spacer(modifier = Modifier.width(8.dp))
                         Surface(
                             shape = RoundedCornerShape(10.dp),
@@ -762,6 +820,25 @@ private fun AdminUserModerationCard(
                         Icon(Icons.Rounded.Block, contentDescription = null, tint = DangerRed, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(strings.adminBanAction, color = DangerRed)
+                    }
+                }
+                if (profile != null && !isSuspended) {
+                    val isVerified = profile.verified
+                    OutlinedButton(
+                        onClick = onToggleVerifiedClick,
+                        modifier = Modifier.testTag("admin_verify_btn_$uid")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Verified,
+                            contentDescription = null,
+                            tint = if (isVerified) MaterialTheme.colorScheme.onSurfaceVariant else BrandBlue,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (isVerified) strings.adminUnverifyAction else strings.adminVerifyAction,
+                            color = if (isVerified) MaterialTheme.colorScheme.onSurfaceVariant else BrandBlue
+                        )
                     }
                 }
                 if (moderation?.deletedByAdmin != true) {

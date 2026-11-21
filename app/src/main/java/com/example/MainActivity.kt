@@ -488,6 +488,8 @@ private fun AuthenticatedBanglaChatHost(
     val adminAllProfiles by mainViewModel.adminAllProfiles.collectAsStateWithLifecycle()
     val adminAllModerations by mainViewModel.adminAllModerations.collectAsStateWithLifecycle()
     val adminAllReports by mainViewModel.adminAllReports.collectAsStateWithLifecycle()
+    val appBroadcast by mainViewModel.appBroadcast.collectAsStateWithLifecycle()
+    val moderationSettings by mainViewModel.moderationSettings.collectAsStateWithLifecycle()
     val chatsState by mainViewModel.chatsState.collectAsStateWithLifecycle()
     val discoverableUsersState by mainViewModel.discoverableUsersState.collectAsStateWithLifecycle()
     val blockedUsers by mainViewModel.blockedUsers.collectAsStateWithLifecycle()
@@ -631,6 +633,8 @@ private fun AuthenticatedBanglaChatHost(
                 profiles = adminAllProfiles,
                 moderations = adminAllModerations,
                 reports = adminAllReports,
+                currentBroadcast = appBroadcast,
+                currentModerationSettings = moderationSettings,
                 language = preferences.language,
                 onBanUser = { uid, name, username, reason ->
                     mainViewModel.adminBanUser(uid, name, username, reason, strings.adminActionSuccessToast)
@@ -643,6 +647,15 @@ private fun AuthenticatedBanglaChatHost(
                 },
                 onDeleteUser = { uid, name, username, reason ->
                     mainViewModel.adminDeleteUser(uid, name, username, reason, strings.adminActionSuccessToast)
+                },
+                onSetVerifiedBadge = { uid, name, username, verified ->
+                    mainViewModel.adminSetVerifiedBadge(uid, name, username, verified, strings.adminActionSuccessToast)
+                },
+                onPublishBroadcast = { active, title, message, severity ->
+                    mainViewModel.adminPublishBroadcast(active, title, message, severity, strings.adminBroadcastSavedToast)
+                },
+                onSaveModerationSettings = { newSettings ->
+                    mainViewModel.adminSaveModerationSettings(newSettings, strings.adminFilterSavedToast)
                 },
                 onDismissReport = { reportId ->
                     mainViewModel.adminDismissReport(reportId, strings.adminActionSuccessToast)

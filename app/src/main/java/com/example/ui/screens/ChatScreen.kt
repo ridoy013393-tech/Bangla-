@@ -147,6 +147,7 @@ import com.example.model.UiState
 import com.example.model.UploadState
 import com.example.model.UserPreferences
 import com.example.ui.components.UserAvatar
+import com.example.ui.components.VerifiedBadge
 import com.example.ui.components.formatCallDuration
 import com.example.ui.components.formatConversationTime
 import com.example.ui.components.formatFileSize
@@ -469,12 +470,22 @@ fun ChatScreen(
                             }
                             Spacer(modifier = Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = peerName,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = peerName,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    )
+                                    if (!isGroupChat && peerProfile?.verified == true) {
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        VerifiedBadge(
+                                            contentDescription = strings.verifiedBadgeDesc,
+                                            size = 16.dp
+                                        )
+                                    }
+                                }
                                 Text(
                                     text = statusText,
                                     style = MaterialTheme.typography.labelSmall,
@@ -1123,7 +1134,7 @@ fun ChatScreen(
                                     items(quickReplies, key = { it }) { suggestion ->
                                         AssistChip(
                                             onClick = {
-                                                viewModel.sendTextMessage(effectiveMyProfile, suggestion)
+                                                viewModel.sendTextMessage(effectiveMyProfile, suggestion, preferences.language)
                                                 viewModel.clearQuickReplies()
                                             },
                                             label = {
@@ -1199,9 +1210,9 @@ fun ChatScreen(
                                         if (toSend.isNotEmpty()) {
                                             messageText = ""
                                             if (editingMessage != null) {
-                                                viewModel.saveEditedMessage(toSend)
+                                                viewModel.saveEditedMessage(toSend, effectiveMyProfile, preferences.language)
                                             } else {
-                                                viewModel.sendTextMessage(effectiveMyProfile, toSend)
+                                                viewModel.sendTextMessage(effectiveMyProfile, toSend, preferences.language)
                                                 viewModel.clearQuickReplies()
                                             }
                                         }

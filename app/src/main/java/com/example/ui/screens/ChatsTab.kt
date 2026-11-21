@@ -76,6 +76,7 @@ import com.example.model.PublicProfile
 import com.example.model.StatusStory
 import com.example.model.UiState
 import com.example.ui.components.UserAvatar
+import com.example.ui.components.VerifiedBadge
 import com.example.ui.components.formatConversationTime
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.BrandBlue
@@ -298,6 +299,7 @@ fun ChatsTab(
                                         ?: chat.peerName(currentUserId),
                                     peerPhoto = peerPhoto,
                                     peerOnline = !chat.isGroup && peerProfile?.isVisiblyOnline(nowMillis) == true,
+                                    peerVerified = !chat.isGroup && peerProfile?.verified == true,
                                     isPeerTyping = isPeerTyping,
                                     isLocked = isLocked,
                                     onClick = {
@@ -412,6 +414,7 @@ fun ChatsTab(
                                     ?: chat.peerName(currentUserId),
                                 peerPhoto = peerPhoto,
                                 peerOnline = peerOnline,
+                                peerVerified = !chat.isGroup && peerProfile?.verified == true,
                                 isPeerTyping = isPeerTyping,
                                 isLocked = isLocked,
                                 onClick = {
@@ -580,6 +583,7 @@ private fun ConversationRow(
     peerName: String,
     peerPhoto: String,
     peerOnline: Boolean,
+    peerVerified: Boolean = false,
     isPeerTyping: Boolean,
     isLocked: Boolean = false,
     onClick: () -> Unit,
@@ -663,8 +667,16 @@ private fun ConversationRow(
                         ),
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
+                    if (peerVerified) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        VerifiedBadge(
+                            contentDescription = strings.verifiedBadgeDesc,
+                            size = 16.dp
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(

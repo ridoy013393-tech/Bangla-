@@ -488,6 +488,44 @@ interface AppStrings {
     val moderationReasonLabel: String
     val mutedBannerTitle: String
     val mutedBannerRemainingPrefix: String
+    // v1.7 Broadcast Banner, Verified Badge & Auto Profanity/Spam Filter
+    val verifiedBadgeDesc: String
+    val adminVerifyAction: String
+    val adminUnverifyAction: String
+    val adminVerifiedBadgeLabel: String
+    val adminBroadcastFilterTab: String
+    val adminBroadcastSectionTitle: String
+    val adminBroadcastSectionDesc: String
+    val adminBroadcastTitleHint: String
+    val adminBroadcastMessageHint: String
+    val adminBroadcastSeverityInfo: String
+    val adminBroadcastSeverityUpdate: String
+    val adminBroadcastSeverityWarning: String
+    val adminBroadcastPublishAction: String
+    val adminBroadcastClearAction: String
+    val adminBroadcastActiveBadge: String
+    val adminBroadcastInactiveBadge: String
+    val adminBroadcastSavedToast: String
+    val adminAutoFilterSectionTitle: String
+    val adminAutoFilterSectionDesc: String
+    val adminProfanityToggleTitle: String
+    val adminProfanityToggleDesc: String
+    val adminProfanityModeBlock: String
+    val adminProfanityModeMask: String
+    val adminSpamToggleTitle: String
+    val adminSpamToggleDesc: String
+    val adminTelegramAlertToggleTitle: String
+    val adminTelegramAlertToggleDesc: String
+    val adminCustomWordsLabel: String
+    val adminCustomWordsHint: String
+    val adminAddWordAction: String
+    val adminSaveFilterAction: String
+    val adminFilterSavedToast: String
+    val adminFilterTesterLabel: String
+    val adminFilterTesterHint: String
+    val adminFilterTesterClean: String
+    val adminFilterTesterFlagged: String
+    val defaultBroadcastTitle: String
 }
 
 object BanglaStrings : AppStrings {
@@ -950,6 +988,43 @@ object BanglaStrings : AppStrings {
     override val moderationReasonLabel = "কারণ"
     override val mutedBannerTitle = "অ্যাডমিন আপনাকে সাময়িকভাবে মেসেজ পাঠানো থেকে বিরত রেখেছেন"
     override val mutedBannerRemainingPrefix = "বাকি সময়"
+    override val verifiedBadgeDesc = "ভেরিফায়েড অ্যাকাউন্ট"
+    override val adminVerifyAction = "ভেরিফাই (✓)"
+    override val adminUnverifyAction = "ব্যাজ সরান"
+    override val adminVerifiedBadgeLabel = "ভেরিফায়েড"
+    override val adminBroadcastFilterTab = "নোটিশ ও ফিল্টার"
+    override val adminBroadcastSectionTitle = "লাইভ ব্রডকাস্ট নোটিশ ব্যানার"
+    override val adminBroadcastSectionDesc = "সব ইউজারের হোম স্ক্রিনে তাৎক্ষণিক গুরুত্বপূর্ণ নোটিশ বা আপডেট ব্যানার দেখান"
+    override val adminBroadcastTitleHint = "নোটিশের শিরোনাম (যেমন: জরুরি আপডেট)"
+    override val adminBroadcastMessageHint = "সব ইউজারের জন্য আপনার বার্তা লিখুন..."
+    override val adminBroadcastSeverityInfo = "সাধারণ"
+    override val adminBroadcastSeverityUpdate = "আপডেট"
+    override val adminBroadcastSeverityWarning = "জরুরি সতর্কতা"
+    override val adminBroadcastPublishAction = "নোটিশ প্রকাশ করুন"
+    override val adminBroadcastClearAction = "নোটিশ বন্ধ করুন"
+    override val adminBroadcastActiveBadge = "লাইভ আছে"
+    override val adminBroadcastInactiveBadge = "বন্ধ আছে"
+    override val adminBroadcastSavedToast = "ব্রডকাস্ট নোটিশ আপডেট হয়েছে"
+    override val adminAutoFilterSectionTitle = "অটো ব্যাড-ওয়ার্ড ও স্প্যাম ফিল্টার"
+    override val adminAutoFilterSectionDesc = "বাংলা ও ইংরেজি অশ্লীল শব্দ এবং স্প্যাম মেসেজ স্বয়ংক্রিয়ভাবে নিয়ন্ত্রণ করুন"
+    override val adminProfanityToggleTitle = "অটো ব্যাড-ওয়ার্ড ফিল্টার"
+    override val adminProfanityToggleDesc = "অশ্লীল বা নিষিদ্ধ শব্দ শনাক্ত করলে ব্লক বা স্টার (***) করবে"
+    override val adminProfanityModeBlock = "মেসেজ ব্লক করুন"
+    override val adminProfanityModeMask = "স্টার (***) করুন"
+    override val adminSpamToggleTitle = "অ্যান্টি-স্প্যাম ফ্লাড প্রোটেকশন"
+    override val adminSpamToggleDesc = "খুব দ্রুত বা একই মেসেজ বারবার পাঠানো স্বয়ংক্রিয়ভাবে আটকাবে"
+    override val adminTelegramAlertToggleTitle = "টেলিগ্রাম অটো-অ্যালার্ট"
+    override val adminTelegramAlertToggleDesc = "বাজে শব্দ বা স্প্যাম ধরা পড়লে আপনার টেলিগ্রাম বটে সতর্কবার্তা পাঠাবে"
+    override val adminCustomWordsLabel = "কাস্টম নিষিদ্ধ শব্দ তালিকা"
+    override val adminCustomWordsHint = "নতুন শব্দ লিখুন (বাংলা বা ইংরেজি)..."
+    override val adminAddWordAction = "যোগ করুন"
+    override val adminSaveFilterAction = "ফিল্টার সেটিংস সেভ করুন"
+    override val adminFilterSavedToast = "অটো-ফিল্টার সেটিংস সংরক্ষণ হয়েছে"
+    override val adminFilterTesterLabel = "লাইভ ফিল্টার টেস্ট"
+    override val adminFilterTesterHint = "যেকোনো বাক্য লিখে টেস্ট করুন..."
+    override val adminFilterTesterClean = "নিরাপদ — কোনো নিষিদ্ধ শব্দ পাওয়া যায়নি"
+    override val adminFilterTesterFlagged = "শনাক্ত হয়েছে"
+    override val defaultBroadcastTitle = "অ্যাডমিন নোটিশ"
 }
 
 object EnglishStrings : AppStrings {
@@ -1412,6 +1487,43 @@ object EnglishStrings : AppStrings {
     override val moderationReasonLabel = "Reason"
     override val mutedBannerTitle = "You are temporarily muted from sending messages"
     override val mutedBannerRemainingPrefix = "Time remaining"
+    override val verifiedBadgeDesc = "Verified Account"
+    override val adminVerifyAction = "Verify (✓)"
+    override val adminUnverifyAction = "Unverify"
+    override val adminVerifiedBadgeLabel = "Verified"
+    override val adminBroadcastFilterTab = "Notice & Filter"
+    override val adminBroadcastSectionTitle = "Live Broadcast Notice Banner"
+    override val adminBroadcastSectionDesc = "Display an instant announcement or update banner on every user's Home screen"
+    override val adminBroadcastTitleHint = "Notice title (e.g. Important Update)"
+    override val adminBroadcastMessageHint = "Write your announcement for all users..."
+    override val adminBroadcastSeverityInfo = "Info"
+    override val adminBroadcastSeverityUpdate = "Update"
+    override val adminBroadcastSeverityWarning = "Warning"
+    override val adminBroadcastPublishAction = "Publish Notice"
+    override val adminBroadcastClearAction = "Turn Off Notice"
+    override val adminBroadcastActiveBadge = "LIVE"
+    override val adminBroadcastInactiveBadge = "OFF"
+    override val adminBroadcastSavedToast = "Broadcast notice updated"
+    override val adminAutoFilterSectionTitle = "Auto Profanity & Anti-Spam Filter"
+    override val adminAutoFilterSectionDesc = "Automatically guard chats against Bangla/English abusive words and spam floods"
+    override val adminProfanityToggleTitle = "Auto Bad-Word Filter"
+    override val adminProfanityToggleDesc = "Blocks or masks (***) abusive and custom restricted words"
+    override val adminProfanityModeBlock = "Block Message"
+    override val adminProfanityModeMask = "Mask with ***"
+    override val adminSpamToggleTitle = "Anti-Spam Flood Protection"
+    override val adminSpamToggleDesc = "Blocks rapid burst flooding and repeated identical spam messages"
+    override val adminTelegramAlertToggleTitle = "Telegram Auto-Alerts"
+    override val adminTelegramAlertToggleDesc = "Sends instant alert with Mute/Ban buttons to your Telegram bot on violations"
+    override val adminCustomWordsLabel = "Custom Blocked Words"
+    override val adminCustomWordsHint = "Add word or phrase (Bangla / English)..."
+    override val adminAddWordAction = "Add"
+    override val adminSaveFilterAction = "Save Filter Settings"
+    override val adminFilterSavedToast = "Auto-filter settings saved"
+    override val adminFilterTesterLabel = "Live Filter Tester"
+    override val adminFilterTesterHint = "Type any sample message to test..."
+    override val adminFilterTesterClean = "Clean — no restricted words detected"
+    override val adminFilterTesterFlagged = "Flagged"
+    override val defaultBroadcastTitle = "Admin Notice"
 }
 
 fun stringsForLanguage(language: AppLanguage): AppStrings =

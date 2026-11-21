@@ -87,6 +87,7 @@ import com.example.model.StatusStory
 import com.example.model.ThemePreference
 import com.example.model.UiState
 import com.example.model.UserPreferences
+import com.example.ui.components.AdminBroadcastBanner
 import com.example.ui.components.BanglaChatWordmark
 import com.example.ui.components.OfflineConnectivityBanner
 import com.example.ui.components.UserAvatar
@@ -127,6 +128,7 @@ fun HomeScreen(
     val usernameSearchState by viewModel.usernameSearchState.collectAsStateWithLifecycle()
     val updateCheckResult by viewModel.updateCheckResult.collectAsStateWithLifecycle()
     val adminReports by viewModel.adminAllReports.collectAsStateWithLifecycle()
+    val appBroadcast by viewModel.appBroadcast.collectAsStateWithLifecycle()
 
     var selectedTab by rememberSaveable { mutableStateOf(HomeTab.CHATS) }
     var selectedChatFilter by rememberSaveable { mutableStateOf(ChatListFilter.ALL) }
@@ -359,6 +361,24 @@ fun HomeScreen(
                                 isOnline = isNetworkOnline,
                                 offlineMessage = strings.offlineBanner
                             )
+
+                            val visibleBroadcast = appBroadcast?.takeIf {
+                                it.isDisplayable(preferences.dismissedBroadcastId)
+                            }
+                            AnimatedVisibility(visible = visibleBroadcast != null) {
+                                visibleBroadcast?.let { notice ->
+                                    AdminBroadcastBanner(
+                                        broadcast = notice,
+                                        defaultTitle = strings.defaultBroadcastTitle,
+                                        dismissContentDescription = strings.close,
+                                        onDismiss = {
+                                            viewModel.dismissBroadcast(
+                                                notice.broadcastId.ifBlank { notice.message.hashCode().toString() }
+                                            )
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
                 },

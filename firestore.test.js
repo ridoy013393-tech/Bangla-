@@ -1196,6 +1196,96 @@ test("v1.6 Super Admin moderation: ban/mute/delete enforcement and strict non-ad
   await assertSucceeds(adminDb.collection("users").doc(BOB_UID).delete());
 });
 
+test("v1.7 Admin Broadcast, Verified Badge isolation, and Auto-Moderation config rules", async () => {
+  const adminDb = testEnv.authenticatedContext("super_admin_uid", {
+    email: "mehedi0169019@gmail.com",
+    email_verified: true,
+  }).firestore();
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID, {
+    email: "alice@example.com",
+    email_verified: true,
+  }).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID, {
+    email: "bob@example.com",
+    email_verified: true,
+  }).firestore();
 
+  // Regular user CANNOT self-register with verified: true
+  await assertFails(
+    aliceDb.collection("profiles").doc(ALICE_UID).set(validProfile(ALICE_UID, { verified: true }))
+  );
 
+  // Regular user registers normally (verified defaults/false)
+  await assertSucceeds(
+    aliceDb.collection("profiles").doc(ALICE_UID).set(validProfile(ALICE_UID))
+  );
 
+  // Regular user CANNOT self-update verified to true
+  await assertFails(
+    aliceDb.collection("profiles").doc(ALICE_UID).update({
+      verified: true,
+      updatedAt: pastDate(1000),
+    })
+  );
+
+  // Super Admin CAN grant and revoke verified badge on Alice's profile
+  await assertSucceeds(
+    adminDb.collection("profiles").doc(ALICE_UID).update({
+      verified: true,
+      updatedAt: pastDate(1000),
+    })
+  );
+  // Super Admin CANNOT tamper with Alice's name via the verified-only rule
+  await assertFails(
+    adminDb.collection("profiles").doc(ALICE_UID).update({
+      verified: true,
+      name: "Hijacked",
+      updatedAt: pastDate(500),
+    })
+  );
+
+  // Regular user CANNOT write global broadcast or moderation config
+  const broadcastPayload = {
+    active: true,
+    broadcastId: "notice_2026_1",
+    title: "গুরুত্বপূর্ণ আপডেট",
+    message: "Bangla Chat v1.7 এখন লাইভ!",
+    severity: "update",
+    updatedBy: "mehedi0169019@gmail.com",
+    updatedAt: pastDate(1000),
+  };
+  await assertFails(aliceDb.collection("appConfig").doc("broadcast").set(broadcastPayload));
+
+  // Super Admin CAN publish broadcast & all signed-in users CAN read it
+  await assertSucceeds(adminDb.collection("appConfig").doc("broadcast").set(broadcastPayload));
+  await assertSucceeds(aliceDb.collection("appConfig").doc("broadcast").get());
+  await assertSucceeds(bobDb.collection("appConfig").doc("broadcast").get());
+
+  // Super Admin CAN update auto-moderation filter settings & signed-in users CAN read it
+  const modConfigPayload = {
+    profanityFilterEnabled: true,
+    profanityMode: "mask",
+    spamProtectionEnabled: true,
+    telegramAlertsEnabled: true,
+    customBlockedWords: ["scamlink", "ফ্রি_টাকা"],
+    updatedBy: "mehedi0169019@gmail.com",
+    updatedAt: pastDate(1000),
+  };
+  await assertFails(bobDb.collection("appConfig").doc("moderation").set(modConfigPayload));
+  await assertSucceeds(adminDb.collection("appConfig").doc("moderation").set(modConfigPayload));
+  await assertSucceeds(bobDb.collection("appConfig").doc("moderation").get());
+
+  // Invalid severity or mode is rejected even for Super Admin
+  await assertFails(
+    adminDb.collection("appConfig").doc("broadcast").set({
+      ...broadcastPayload,
+      severity: "invalid_level",
+    })
+  );
+  await assertFails(
+    adminDb.collection("appConfig").doc("moderation").set({
+      ...modConfigPayload,
+      profanityMode: "unknown_mode",
+    })
+  );
+});

@@ -38,6 +38,7 @@ class PreferencesRepository(context: Context) {
         val APP_LOCK_PIN_HASH = stringPreferencesKey("app_lock_pin_hash")
         val BIOMETRIC_LOCK_ENABLED = booleanPreferencesKey("biometric_lock_enabled")
         val LOCKED_CHAT_IDS = stringSetPreferencesKey("locked_chat_ids")
+        val DISMISSED_BROADCAST_ID = stringPreferencesKey("dismissed_broadcast_id")
     }
 
     val preferencesFlow: Flow<UserPreferences> = dataStore.data
@@ -74,7 +75,8 @@ class PreferencesRepository(context: Context) {
                 appLockEnabled = lockEnabled,
                 appLockPinHash = pinHash,
                 biometricLockEnabled = prefs[Keys.BIOMETRIC_LOCK_ENABLED] ?: false,
-                lockedChatIds = prefs[Keys.LOCKED_CHAT_IDS] ?: emptySet()
+                lockedChatIds = prefs[Keys.LOCKED_CHAT_IDS] ?: emptySet(),
+                dismissedBroadcastId = prefs[Keys.DISMISSED_BROADCAST_ID].orEmpty()
             )
         }
 
@@ -131,6 +133,10 @@ class PreferencesRepository(context: Context) {
                 current + chatId
             }
         }
+    }
+
+    suspend fun setDismissedBroadcastId(broadcastId: String) {
+        dataStore.edit { it[Keys.DISMISSED_BROADCAST_ID] = broadcastId }
     }
 
     companion object {

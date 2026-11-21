@@ -4,18 +4,26 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Campaign
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.NewReleases
+import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material.icons.rounded.WifiOff
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -40,7 +48,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.testTag
 import coil.compose.AsyncImage
+import com.example.model.AppBroadcast
 import com.example.model.AppLanguage
 import com.example.model.PublicProfile
 import com.example.ui.theme.BrandBlue
@@ -48,6 +58,7 @@ import com.example.ui.theme.BrandBlueDark
 import com.example.ui.theme.BrandBlueLight
 import com.example.ui.theme.BrandPurple
 import com.example.ui.theme.BrandPurpleLight
+import com.example.ui.theme.DangerRed
 import com.example.ui.theme.DisplayLatinFontFamily
 import com.example.ui.theme.OfflineAmber
 import com.example.ui.theme.OnlineGreen
@@ -722,4 +733,89 @@ fun PresenceStatusPill(
     }
 }
 
+@Composable
+fun VerifiedBadge(
+    contentDescription: String = "Verified Account",
+    size: Dp = 17.dp,
+    modifier: Modifier = Modifier
+) {
+    Icon(
+        imageVector = Icons.Rounded.Verified,
+        contentDescription = contentDescription,
+        tint = BrandBlue,
+        modifier = modifier
+            .size(size)
+            .testTag("verified_badge_icon")
+    )
+}
 
+@Composable
+fun AdminBroadcastBanner(
+    broadcast: AppBroadcast,
+    defaultTitle: String,
+    dismissContentDescription: String,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val (gradientColors, icon) = when (broadcast.severity) {
+        "warning" -> listOf(Color(0xFFD97706), DangerRed) to Icons.Rounded.Warning
+        "update" -> listOf(BrandPurple, Color(0xFF4F46E5)) to Icons.Rounded.NewReleases
+        else -> listOf(BrandBlue, Color(0xFF2563EB)) to Icons.Rounded.Campaign
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Brush.horizontalGradient(gradientColors))
+            .testTag("admin_broadcast_banner")
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 14.dp, top = 10.dp, bottom = 10.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.20f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = broadcast.title.ifBlank { defaultTitle },
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = broadcast.message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.94f)
+                )
+            }
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.testTag("dismiss_broadcast_banner_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Close,
+                    contentDescription = dismissContentDescription,
+                    tint = Color.White.copy(alpha = 0.90f),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+    }
+}

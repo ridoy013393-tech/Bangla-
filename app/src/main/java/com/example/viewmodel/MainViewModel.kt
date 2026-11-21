@@ -11,6 +11,7 @@ import com.example.data.PreferencesRepository
 import com.example.data.StorageRepository
 import com.example.data.UpdateCheckResult
 import com.example.data.extractFirestoreRootError
+import com.example.model.AppBroadcast
 import com.example.model.AppLanguage
 import com.example.model.BlockedUser
 import com.example.model.CallLog
@@ -19,6 +20,7 @@ import com.example.model.Chat
 import com.example.model.ChatFontSize
 import com.example.model.ChatWallpaper
 import com.example.model.FavoriteContact
+import com.example.model.ModerationSettings
 import com.example.model.ModerationStatus
 import com.example.model.PrivateUser
 import com.example.model.PublicProfile
@@ -186,6 +188,24 @@ class MainViewModel(
     val adminAllReports: StateFlow<List<UserReport>> =
         (if (isSuperAdmin) repository.observeAllReportsForAdmin() else flowOf(emptyList()))
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
+
+    val appBroadcast: StateFlow<AppBroadcast?> =
+        repository.observeAppBroadcast()
+            .catch { error ->
+                val root = extractFirestoreRootError(error)
+                if (root == null && error is CancellationException) throw error
+                emit(null)
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
+
+    val moderationSettings: StateFlow<ModerationSettings> =
+        repository.observeModerationSettings()
+            .catch { error ->
+                val root = extractFirestoreRootError(error)
+                if (root == null && error is CancellationException) throw error
+                emit(ModerationSettings())
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), ModerationSettings())
 
     private val _isPostingStatus = MutableStateFlow(false)
     val isPostingStatus: StateFlow<Boolean> = _isPostingStatus.asStateFlow()
@@ -699,6 +719,52 @@ class MainViewModel(
             repository.adminDismissReport(reportId)
                 .onSuccess { _snackbarEvents.tryEmit(successToast) }
                 .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Dismiss report failed") }
+        }
+    }
+
+    fun dismissBroadcast(broadcastId: String) {
+        if (broadcastId.isBlank()) return
+        viewModelScope.launch {
+            preferencesRepository.setDismissedBroadcastId(broadcastId)
+        }
+    }
+
+    fun adminSetVerifiedBadge(
+        targetUid: String,
+        targetName: String,
+        targetUsername: String,
+        verified: Boolean,
+        successToast: String
+    ) {
+        viewModelScope.launch {
+            repository.adminSetVerifiedBadge(targetUid, targetName, targetUsername, verified)
+                .onSuccess { _snackbarEvents.tryEmit(successToast) }
+                .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Verification update failed") }
+        }
+    }
+
+    fun adminPublishBroadcast(
+        active: Boolean,
+        title: String,
+        message: String,
+        severity: String,
+        successToast: String
+    ) {
+        viewModelScope.launch {
+            repository.adminPublishBroadcast(active, title, message, severity)
+                .onSuccess { _snackbarEvents.tryEmit(successToast) }
+                .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Broadcast update failed") }
+        }
+    }
+
+    fun adminSaveModerationSettings(
+        settings: ModerationSettings,
+        successToast: String
+    ) {
+        viewModelScope.launch {
+            repository.adminUpdateModerationSettings(settings)
+                .onSuccess { _snackbarEvents.tryEmit(successToast) }
+                .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Filter settings update failed") }
         }
     }
 

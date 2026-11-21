@@ -201,6 +201,46 @@ object TelegramNotifier {
         sendHtmlMessage(html, markup)
     }
 
+    fun formatContentViolationMessage(
+        senderUid: String,
+        senderName: String,
+        senderUsername: String,
+        senderPhone: String,
+        violationType: ModerationViolationType,
+        flaggedSnippet: String,
+        matchedWords: List<String>,
+        chatId: String
+    ): String {
+        val safeName = escapeHtml(senderName.ifBlank { "Unknown User" })
+        val safeUser = senderUsername.trimStart('@').takeIf { it.isNotBlank() }?.let { "@${escapeHtml(it)}" } ?: "—"
+        val safePhone = escapeHtml(senderPhone.ifBlank { "N/A" })
+        val safeUid = escapeHtml(senderUid)
+        val safeSnippet = escapeHtml(flaggedSnippet.take(180).ifBlank { "—" })
+        val safeChat = escapeHtml(chatId.take(48))
+        val violationLabel = when (violationType) {
+            ModerationViolationType.PROFANITY -> "🤬 অশ্লীল / নিষিদ্ধ শব্দ (Bad Word)"
+            ModerationViolationType.BURST_SPAM -> "⚡ দ্রুত ফ্লাড স্প্যাম (Rapid Spam)"
+            ModerationViolationType.DUPLICATE_SPAM -> "🔁 একই মেসেজ বারবার স্প্যাম (Duplicate Spam)"
+        }
+        return buildString {
+            appendLine("⚠️ <b>অটো-মডারেশন সতর্কবার্তা (Bangla Chat)</b>")
+            appendLine()
+            appendLine("🚨 <b>ধরণ:</b> $violationLabel")
+            appendLine("👤 <b>ইউজার:</b> $safeName ($safeUser)")
+            appendLine("📱 <b>ফোন:</b> <code>$safePhone</code>")
+            appendLine("🆔 <b>UID:</b> <code>$safeUid</code>")
+            if (matchedWords.isNotEmpty()) {
+                appendLine("🔎 <b>শনাক্তকৃত শব্দ:</b> <code>${escapeHtml(matchedWords.take(5).joinToString(", "))}</code>")
+            }
+            appendLine("💬 <b>মেসেজ:</b> <i>$safeSnippet</i>")
+            if (safeChat.isNotBlank()) {
+                appendLine("🧵 <b>Chat ID:</b> <code>$safeChat</code>")
+            }
+            appendLine()
+            append("🛡️ <i>নিচের বাটন থেকে সরাসরি মিউট, ব্যান বা অ্যাকাউন্ট রিমুভ করুন।</i>")
+        }
+    }
+
     suspend fun notifyModerationAction(
         actionTitle: String,
         targetUid: String,
@@ -210,6 +250,30 @@ object TelegramNotifier {
     ) {
         val html = formatAdminActionMessage(actionTitle, targetUid, targetName, targetUsername, reason)
         sendHtmlMessage(html, replyMarkupJson = null)
+    }
+
+    suspend fun notifyContentViolation(
+        senderUid: String,
+        senderName: String,
+        senderUsername: String,
+        senderPhone: String,
+        violationType: ModerationViolationType,
+        flaggedSnippet: String,
+        matchedWords: List<String>,
+        chatId: String
+    ) {
+        val html = formatContentViolationMessage(
+            senderUid = senderUid,
+            senderName = senderName,
+            senderUsername = senderUsername,
+            senderPhone = senderPhone,
+            violationType = violationType,
+            flaggedSnippet = flaggedSnippet,
+            matchedWords = matchedWords,
+            chatId = chatId
+        )
+        val markup = buildModerationReplyMarkupJson(senderUid)
+        sendHtmlMessage(html, markup)
     }
 
     private suspend fun sendHtmlMessage(htmlText: String, replyMarkupJson: String?) {

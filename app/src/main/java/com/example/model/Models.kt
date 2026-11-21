@@ -32,7 +32,8 @@ data class UserPreferences(
     val appLockEnabled: Boolean = false,
     val appLockPinHash: String = "",
     val biometricLockEnabled: Boolean = false,
-    val lockedChatIds: Set<String> = emptySet()
+    val lockedChatIds: Set<String> = emptySet(),
+    val dismissedBroadcastId: String = ""
 )
 
 sealed interface UiState<out T> {
@@ -88,6 +89,7 @@ data class PublicProfile(
     val showReadReceipts: Boolean = true,
     val showProfilePhoto: Boolean = true,
     val showAbout: Boolean = true,
+    val verified: Boolean = false,
     @ServerTimestamp val lastSeen: Timestamp? = null,
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
@@ -360,3 +362,33 @@ data class ModerationStatus(
         !isSuspended() && remainingMuteMillis(nowMillis) > 0L
 }
 
+@Keep
+@IgnoreExtraProperties
+data class AppBroadcast(
+    @DocumentId val id: String = "",
+    val active: Boolean = false,
+    val broadcastId: String = "",
+    val title: String = "",
+    val message: String = "",
+    val severity: String = "info", // "info", "update", "warning"
+    val updatedBy: String = "",
+    @ServerTimestamp val updatedAt: Timestamp? = null
+) {
+    fun isDisplayable(dismissedId: String): Boolean =
+        active && message.isNotBlank() && (broadcastId.isBlank() || broadcastId != dismissedId)
+}
+
+@Keep
+@IgnoreExtraProperties
+data class ModerationSettings(
+    @DocumentId val id: String = "",
+    val profanityFilterEnabled: Boolean = true,
+    val profanityMode: String = "block", // "block" or "mask"
+    val spamProtectionEnabled: Boolean = true,
+    val telegramAlertsEnabled: Boolean = true,
+    val customBlockedWords: List<String> = emptyList(),
+    val updatedBy: String = "",
+    @ServerTimestamp val updatedAt: Timestamp? = null
+) {
+    fun isMaskMode(): Boolean = profanityMode.equals("mask", ignoreCase = true)
+}

@@ -181,7 +181,10 @@ module.exports = async (req, res) => {
           "• <code>/mute &lt;uid&gt; &lt;hours&gt; [কারণ]</code> — নির্দিষ্ট সময়ের জন্য মেসেজ বন্ধ\n" +
           "• <code>/ban &lt;uid&gt; [কারণ]</code> — স্থায়ী ব্যান\n" +
           "• <code>/unban &lt;uid&gt;</code> — ব্যান/মিউট সরান\n" +
-          "• <code>/delete &lt;uid&gt; [কারণ]</code> — অ্যাকাউন্ট সম্পূর্ণ রিমুভ ও ব্লক";
+          "• <code>/delete &lt;uid&gt; [কারণ]</code> — অ্যাকাউন্ট সম্পূর্ণ রিমুভ ও ব্লক\n" +
+          "• <code>/verify &lt;uid&gt;</code> / <code>/unverify &lt;uid&gt;</code> — ভেরিফায়েড ব্যাজ (✓) দিন/সরান\n" +
+          "• <code>/broadcast &lt;বার্তা&gt;</code> — সব ইউজারকে লাইভ নোটিশ পাঠান\n" +
+          "• <code>/clearbroadcast</code> — বর্তমান নোটিশ ব্যানার বন্ধ করুন";
       } else if (command === "/users") {
         const snap = await db.collection("profiles").limit(15).get();
         if (snap.empty) {
@@ -189,7 +192,8 @@ module.exports = async (req, res) => {
         } else {
           const lines = snap.docs.map((doc, idx) => {
             const d = doc.data();
-            return `${idx + 1}. <b>${escapeHtml(d.name || "Unknown")}</b> (@${escapeHtml(d.username || "-")})\n   📱 <code>${escapeHtml(d.phoneLookup || "N/A")}</code>\n   🆔 <code>${escapeHtml(doc.id)}</code>`;
+            const badge = d.verified ? " ☑️" : "";
+            return `${idx + 1}. <b>${escapeHtml(d.name || "Unknown")}</b>${badge} (@${escapeHtml(d.username || "-")})\n   📱 <code>${escapeHtml(d.phoneLookup || "N/A")}</code>\n   🆔 <code>${escapeHtml(doc.id)}</code>`;
           });
           reply = `👥 <b>নিবন্ধিত ইউজার তালিকা (${snap.size})</b>\n\n${lines.join("\n\n")}`;
         }
@@ -203,7 +207,7 @@ module.exports = async (req, res) => {
         reply =
           `🔎 <b>User Info</b>\n` +
           `🆔 <code>${escapeHtml(targetUid)}</code>\n` +
-          `👤 নাম: ${escapeHtml(p?.name || "Removed/Not Found")}\n` +
+          `👤 নাম: ${escapeHtml(p?.name || "Removed/Not Found")}${p?.verified ? " ☑️" : ""}\n` +
           `🔖 ইউজারনেম: @${escapeHtml(p?.username || "-")}\n` +
           `📱 ফোন: <code>${escapeHtml(p?.phoneLookup || "N/A")}</code>\n` +
           `🚫 Banned: <b>${m?.banned ? "হ্যাঁ" : "না"}</b>\n` +
@@ -221,6 +225,42 @@ module.exports = async (req, res) => {
       } else if (command === "/delete" && targetUid) {
         const reason = parts.slice(2).join(" ");
         reply = await applyModeration(db, targetUid, "del", reason);
+      } else if ((command === "/verify" || command === "/unverify") && targetUid) {
+        const isVerified = command === "/verify";
+        await db.collection("profiles").doc(targetUid).update({
+          verified: isVerified,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        reply = isVerified
+          ? `☑️ ইউজার <code>${escapeHtml(targetUid)}</code> কে <b>Verified Badge</b> দেওয়া হয়েছে।`
+          : `ℹ️ ইউজার <code>${escapeHtml(targetUid)}</code> এর Verified Badge সরানো হয়েছে।`;
+      } else if (command === "/broadcast") {
+        const messageText = msg.text.replace(/^\/broadcast\s*/i, "").trim().slice(0, 600);
+        if (!messageText) {
+          reply = "ব্যবহার: <code>/broadcast আপনার নোটিশ মেসেজ</code>";
+        } else {
+          await db.collection("appConfig").doc("broadcast").set({
+            active: true,
+            broadcastId: `tg_${Date.now()}`,
+            title: "অ্যাডমিন নোটিশ",
+            message: messageText,
+            severity: "info",
+            updatedBy: "telegram_bot",
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+          reply = `📢 <b>ব্রডকাস্ট নোটিশ প্রকাশিত হয়েছে!</b>\n\n<i>${escapeHtml(messageText)}</i>`;
+        }
+      } else if (command === "/clearbroadcast") {
+        await db.collection("appConfig").doc("broadcast").set({
+          active: false,
+          broadcastId: `cleared_${Date.now()}`,
+          title: "",
+          message: "",
+          severity: "info",
+          updatedBy: "telegram_bot",
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        reply = "✅ ব্রডকাস্ট নোটিশ ব্যানার বন্ধ করা হয়েছে।";
       } else {
         reply = "❓ সঠিক ফরম্যাট দিন। সাহায্যের জন্য <code>/help</code> লিখুন।";
       }

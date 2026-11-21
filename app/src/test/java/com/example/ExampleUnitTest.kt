@@ -285,7 +285,147 @@ class ExampleUnitTest {
         assertTrue(markup.contains("\"callback_data\":\"m24:uid_999\""))
         assertTrue(markup.contains("\"callback_data\":\"del:uid_999\""))
     }
+
+    @Test
+    fun contentModerationProfanityMaskingAndCustomWordsWork() {
+        com.example.data.ContentModerationEngine.resetTrackingForTests()
+
+        // Clean Bangla & English messages pass untouched
+        val clean = com.example.data.ContentModerationEngine.scanProfanity("আসসালামু আলাইকুম, কেমন আছেন?")
+        assertFalse(clean.hasProfanity)
+        assertEquals("আসসালামু আলাইকুম, কেমন আছেন?", clean.maskedText)
+
+        // Built-in English & Bangla profanity detection + masking
+        val enScan = com.example.data.ContentModerationEngine.scanProfanity("You are a fuuuuck idiot")
+        assertTrue(enScan.hasProfanity)
+        assertTrue(enScan.maskedText.contains("***"))
+
+        val bnScan = com.example.data.ContentModerationEngine.scanProfanity("তুই একটা মাদারচোদ লোক")
+        assertTrue(bnScan.hasProfanity)
+        assertTrue(bnScan.maskedText.contains("***"))
+
+        // Custom admin blocked words & multi-word phrases
+        val customScan = com.example.data.ContentModerationEngine.scanProfanity(
+            text = "Join free money scam right now",
+            customBlockedWords = listOf("free money scam")
+        )
+        assertTrue(customScan.hasProfanity)
+        assertTrue(customScan.maskedText.contains("***"))
+
+        // Block mode blocks message & flags Telegram alert
+        val blockSettings = com.example.model.ModerationSettings(
+            profanityFilterEnabled = true,
+            profanityMode = "block",
+            spamProtectionEnabled = true,
+            telegramAlertsEnabled = true
+        )
+        val blocked = com.example.data.ContentModerationEngine.evaluateOutgoingMessage(
+            senderUid = "user_bad_1",
+            rawText = "what the fuck",
+            settings = blockSettings,
+            nowMillis = 1_000_000L
+        )
+        assertTrue(blocked is com.example.data.MessageModerationOutcome.Block)
+        val blockOutcome = blocked as com.example.data.MessageModerationOutcome.Block
+        assertEquals(com.example.data.ModerationViolationType.PROFANITY, blockOutcome.violationType)
+        assertTrue(blockOutcome.shouldAlertAdmin)
+
+        // Mask mode allows cleaned message through
+        val maskSettings = blockSettings.copy(profanityMode = "mask")
+        val masked = com.example.data.ContentModerationEngine.evaluateOutgoingMessage(
+            senderUid = "user_bad_2",
+            rawText = "hey fuck you",
+            settings = maskSettings,
+            nowMillis = 1_000_000L
+        )
+        assertTrue(masked is com.example.data.MessageModerationOutcome.Allow)
+        val allowOutcome = masked as com.example.data.MessageModerationOutcome.Allow
+        assertTrue(allowOutcome.wasMasked)
+        assertEquals("hey *** you", allowOutcome.finalText)
+    }
+
+    @Test
+    fun contentModerationDetectsBurstAndDuplicateSpam() {
+        com.example.data.ContentModerationEngine.resetTrackingForTests()
+        val settings = com.example.model.ModerationSettings(
+            profanityFilterEnabled = true,
+            spamProtectionEnabled = true,
+            telegramAlertsEnabled = true
+        )
+
+        // Duplicate spam: 3 identical allowed, 4th blocked
+        val baseTime = 2_000_000L
+        for (i in 0 until 3) {
+            val res = com.example.data.ContentModerationEngine.evaluateOutgoingMessage(
+                senderUid = "dup_user",
+                rawText = "buy cheap followers",
+                settings = settings,
+                nowMillis = baseTime + i * 2_000L
+            )
+            assertTrue(res is com.example.data.MessageModerationOutcome.Allow)
+        }
+        val dupBlocked = com.example.data.ContentModerationEngine.evaluateOutgoingMessage(
+            senderUid = "dup_user",
+            rawText = "buy cheap followers",
+            settings = settings,
+            nowMillis = baseTime + 7_000L
+        )
+        assertTrue(dupBlocked is com.example.data.MessageModerationOutcome.Block)
+        assertEquals(
+            com.example.data.ModerationViolationType.DUPLICATE_SPAM,
+            (dupBlocked as com.example.data.MessageModerationOutcome.Block).violationType
+        )
+
+        // Burst flood: 6 distinct messages in 3s allowed, 7th blocked
+        val burstBase = 3_000_000L
+        for (i in 0 until 6) {
+            val res = com.example.data.ContentModerationEngine.evaluateOutgoingMessage(
+                senderUid = "burst_user",
+                rawText = "message number $i",
+                settings = settings,
+                nowMillis = burstBase + i * 500L
+            )
+            assertTrue(res is com.example.data.MessageModerationOutcome.Allow)
+        }
+        val burstBlocked = com.example.data.ContentModerationEngine.evaluateOutgoingMessage(
+            senderUid = "burst_user",
+            rawText = "message number 7",
+            settings = settings,
+            nowMillis = burstBase + 3_500L
+        )
+        assertTrue(burstBlocked is com.example.data.MessageModerationOutcome.Block)
+        assertEquals(
+            com.example.data.ModerationViolationType.BURST_SPAM,
+            (burstBlocked as com.example.data.MessageModerationOutcome.Block).violationType
+        )
+    }
+
+    @Test
+    fun appBroadcastDisplayabilityAndTelegramViolationAlertFormat() {
+        val activeNotice = com.example.model.AppBroadcast(
+            active = true,
+            broadcastId = "bc_101",
+            title = "জরুরি আপডেট",
+            message = "নতুন ফিচার চালু হয়েছে!",
+            severity = "update"
+        )
+        assertTrue(activeNotice.isDisplayable(dismissedId = ""))
+        assertFalse(activeNotice.isDisplayable(dismissedId = "bc_101"))
+        assertTrue(activeNotice.copy(broadcastId = "bc_102").isDisplayable(dismissedId = "bc_101"))
+        assertFalse(activeNotice.copy(active = false).isDisplayable(dismissedId = ""))
+
+        val alertHtml = com.example.data.TelegramNotifier.formatContentViolationMessage(
+            senderUid = "u_77",
+            senderName = "Test User",
+            senderUsername = "testuser",
+            senderPhone = "+8801700000000",
+            violationType = com.example.data.ModerationViolationType.PROFANITY,
+            flaggedSnippet = "bad <word>",
+            matchedWords = listOf("bad"),
+            chatId = "chat_1"
+        )
+        assertTrue(alertHtml.contains("Test User"))
+        assertTrue(alertHtml.contains("u_77"))
+        assertTrue(alertHtml.contains("bad &lt;word&gt;"))
+    }
 }
-
-
-

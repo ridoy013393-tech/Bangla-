@@ -105,6 +105,7 @@ import com.example.model.UserPreferences
 import com.example.ui.components.BanglaChatLogoMark
 import com.example.ui.components.BanglaChatWordmark
 import com.example.ui.components.UserAvatar
+import com.example.ui.components.VerifiedBadge
 import com.example.ui.components.formatFullDate
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.BrandBlue
@@ -202,11 +203,21 @@ fun SettingsTab(
                         )
                         Spacer(modifier = Modifier.width(14.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = myProfile?.name.orEmpty().ifBlank { "Bangla Chat User" },
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = myProfile?.name.orEmpty().ifBlank { "Bangla Chat User" },
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                                if (myProfile?.verified == true) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    VerifiedBadge(
+                                        contentDescription = strings.verifiedBadgeDesc,
+                                        size = 20.dp
+                                    )
+                                }
+                            }
                             Text(
                                 text = "@${myProfile?.username.orEmpty()}",
                                 style = MaterialTheme.typography.bodyMedium,

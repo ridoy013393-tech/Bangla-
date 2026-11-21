@@ -18,6 +18,7 @@
         "showReadReceipts": { "type": "boolean", "description": "Privacy setting controlling read receipt updates." },
         "showProfilePhoto": { "type": "boolean", "description": "Optional privacy setting controlling whether others can see profile photo." },
         "showAbout": { "type": "boolean", "description": "Optional privacy setting controlling whether others can see about/bio text." },
+        "verified": { "type": "boolean", "description": "Optional Super-Admin-only verified badge flag." },
         "lastSeen": { "type": "string", "format": "date-time", "description": "Last active server timestamp (FieldValue.serverTimestamp())." },
         "createdAt": { "type": "string", "format": "date-time", "description": "Account creation server timestamp (FieldValue.serverTimestamp())." },
         "updatedAt": { "type": "string", "format": "date-time", "description": "Last profile update server timestamp (FieldValue.serverTimestamp())." }
@@ -255,6 +256,36 @@
         "updatedAt": { "type": "string", "format": "date-time", "description": "Last moderation update server timestamp." }
       },
       "required": ["uid", "banned", "deletedByAdmin", "updatedAt"]
+    },
+    "AppBroadcast": {
+      "title": "AppBroadcast",
+      "description": "Global Super-Admin broadcast announcement banner displayed on all users' home screens.",
+      "type": "object",
+      "properties": {
+        "active": { "type": "boolean" },
+        "broadcastId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "severity": { "type": "string", "enum": ["info", "update", "warning"] },
+        "updatedBy": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["active", "broadcastId", "title", "message", "severity", "updatedAt"]
+    },
+    "ModerationSettings": {
+      "title": "ModerationSettings",
+      "description": "Global Super-Admin auto profanity filter, anti-spam protection, and Telegram moderation alert settings.",
+      "type": "object",
+      "properties": {
+        "profanityFilterEnabled": { "type": "boolean" },
+        "profanityMode": { "type": "string", "enum": ["block", "mask"] },
+        "spamProtectionEnabled": { "type": "boolean" },
+        "telegramAlertsEnabled": { "type": "boolean" },
+        "customBlockedWords": { "type": "array" },
+        "updatedBy": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["profanityFilterEnabled", "profanityMode", "spamProtectionEnabled", "telegramAlertsEnabled", "customBlockedWords", "updatedAt"]
     }
   },
   "firestore": {
@@ -266,6 +297,7 @@
     "/users/{uid}/callLogs/{callId}": { "schema": { "$ref": "#/entities/CallLog" } },
     "/reports/{reportId}": { "schema": { "$ref": "#/entities/UserReport" } },
     "/moderation/{uid}": { "schema": { "$ref": "#/entities/ModerationStatus" } },
+    "/appConfig/{configId}": { "schema": { "$ref": "#/entities/AppBroadcast" } },
     "/chats/{chatId}": { "schema": { "$ref": "#/entities/Chat" } },
     "/chats/{chatId}/messages/{messageId}": { "schema": { "$ref": "#/entities/ChatMessage" } },
     "/statuses/{statusId}": { "schema": { "$ref": "#/entities/StatusStory" } },

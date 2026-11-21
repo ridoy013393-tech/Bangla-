@@ -78,6 +78,7 @@ import com.example.model.FavoriteContact
 import com.example.model.PublicProfile
 import com.example.ui.components.PresenceStatusPill
 import com.example.ui.components.UserAvatar
+import com.example.ui.components.VerifiedBadge
 import com.example.ui.components.formatFullDate
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.BrandBlue
@@ -527,13 +528,23 @@ fun ContactsTab(
                                     )
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = profile.name,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = profile.name,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false)
+                                            )
+                                            if (profile.verified) {
+                                                Spacer(modifier = Modifier.width(5.dp))
+                                                VerifiedBadge(
+                                                    contentDescription = strings.verifiedBadgeDesc,
+                                                    size = 17.dp
+                                                )
+                                            }
+                                        }
                                         Text(
                                             text = "@${profile.username}",
                                             style = MaterialTheme.typography.bodyMedium,

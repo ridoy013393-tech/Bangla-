@@ -2,6 +2,7 @@ package com.example.data
 
 import android.content.Context
 import com.example.R
+import com.example.model.AppBroadcast
 import com.example.model.BlockedUser
 import com.example.model.CallLog
 import com.example.model.CallSession
@@ -9,6 +10,7 @@ import com.example.model.Chat
 import com.example.model.ChatMessage
 import com.example.model.FavoriteContact
 import com.example.model.IceCandidateRecord
+import com.example.model.ModerationSettings
 import com.example.model.ModerationStatus
 import com.example.model.PrivateUser
 import com.example.model.PublicProfile
@@ -2493,5 +2495,182 @@ class BanglaChatRepository(
             handleFirestoreError(e, OperationType.DELETE, path)
             Result.failure(e)
         }
+    }
+
+    // --- GLOBAL ADMIN BROADCAST, VERIFIED BADGE & AUTO-MODERATION CONFIG ---
+
+    fun observeAppBroadcast(): Flow<AppBroadcast?> {
+        val path = "appConfig/broadcast"
+        return db.collection("appConfig").document("broadcast")
+            .snapshots()
+            .map { snap ->
+                if (!snap.exists()) null
+                else snap.toObject(
+                    AppBroadcast::class.java,
+                    DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+                )
+            }
+            .catch { error ->
+                val root = extractFirestoreRootError(error)
+                if (root == null && error is CancellationException) throw error
+                if (root != null && auth.currentUser != null) {
+                    handleFirestoreError(root, OperationType.GET, path)
+                }
+                emit(null)
+            }
+    }
+
+    fun observeModerationSettings(): Flow<ModerationSettings> {
+        val path = "appConfig/moderation"
+        return db.collection("appConfig").document("moderation")
+            .snapshots()
+            .map { snap ->
+                if (!snap.exists()) ModerationSettings()
+                else snap.toObject(
+                    ModerationSettings::class.java,
+                    DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+                ) ?: ModerationSettings()
+            }
+            .catch { error ->
+                val root = extractFirestoreRootError(error)
+                if (root == null && error is CancellationException) throw error
+                if (root != null && auth.currentUser != null) {
+                    handleFirestoreError(root, OperationType.GET, path)
+                }
+                emit(ModerationSettings())
+            }
+    }
+
+    suspend fun adminPublishBroadcast(
+        active: Boolean,
+        title: String,
+        message: String,
+        severity: String
+    ): Result<Unit> {
+        val path = "appConfig/broadcast"
+        return try {
+            requireUserId()
+            check(isCurrentUserSuperAdmin()) { "Admin privileges required" }
+            val adminEmail = auth.currentUser?.email.orEmpty().ifBlank { SUPER_ADMIN_EMAIL }.take(120)
+            val safeSeverity = when (severity) {
+                "update", "warning" -> severity
+                else -> "info"
+            }
+            val safeTitle = title.trim().take(120)
+            val safeMessage = message.trim().take(600)
+            val broadcastId = if (active) "bc_${System.currentTimeMillis()}" else "cleared_${System.currentTimeMillis()}"
+            val payload = mapOf(
+                "active" to active,
+                "broadcastId" to broadcastId,
+                "title" to safeTitle,
+                "message" to safeMessage,
+                "severity" to safeSeverity,
+                "updatedBy" to adminEmail,
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            db.collection("appConfig").document("broadcast").set(payload).await()
+            TelegramNotifier.notifyModerationAction(
+                actionTitle = if (active) "📢 ব্রডকাস্ট নোটিশ প্রকাশিত ($safeSeverity)" else "🔕 ব্রডকাস্ট নোটিশ বন্ধ করা হয়েছে",
+                targetUid = "ALL_USERS",
+                targetName = safeTitle.ifBlank { "Global Notice" },
+                targetUsername = "",
+                reason = safeMessage.ifBlank { "Broadcast cleared" }
+            )
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.WRITE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminUpdateModerationSettings(settings: ModerationSettings): Result<Unit> {
+        val path = "appConfig/moderation"
+        return try {
+            requireUserId()
+            check(isCurrentUserSuperAdmin()) { "Admin privileges required" }
+            val adminEmail = auth.currentUser?.email.orEmpty().ifBlank { SUPER_ADMIN_EMAIL }.take(120)
+            val safeMode = if (settings.isMaskMode()) "mask" else "block"
+            val cleanedWords = settings.customBlockedWords
+                .map { it.trim().take(40) }
+                .filter { it.length >= 2 }
+                .distinctBy { it.lowercase() }
+                .take(200)
+            val payload = mapOf(
+                "profanityFilterEnabled" to settings.profanityFilterEnabled,
+                "profanityMode" to safeMode,
+                "spamProtectionEnabled" to settings.spamProtectionEnabled,
+                "telegramAlertsEnabled" to settings.telegramAlertsEnabled,
+                "customBlockedWords" to cleanedWords,
+                "updatedBy" to adminEmail,
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            db.collection("appConfig").document("moderation").set(payload).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.WRITE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminSetVerifiedBadge(
+        targetUid: String,
+        targetName: String,
+        targetUsername: String,
+        verified: Boolean
+    ): Result<Unit> {
+        val path = "profiles/$targetUid"
+        return try {
+            requireUserId()
+            check(isCurrentUserSuperAdmin()) { "Admin privileges required" }
+            db.collection("profiles").document(targetUid).update(
+                mapOf(
+                    "verified" to verified,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+            TelegramNotifier.notifyModerationAction(
+                actionTitle = if (verified) "☑️ ভেরিফায়েড ব্যাজ দেওয়া হয়েছে" else "ℹ️ ভেরিফায়েড ব্যাজ সরানো হয়েছে",
+                targetUid = targetUid,
+                targetName = targetName,
+                targetUsername = targetUsername,
+                reason = if (verified) "Verified by Super Admin" else "Verification removed by Super Admin"
+            )
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun notifyAutoModerationViolation(
+        senderProfile: PublicProfile,
+        violationType: ModerationViolationType,
+        flaggedSnippet: String,
+        matchedWords: List<String>,
+        chatId: String
+    ) {
+        val uid = senderProfile.uid.ifBlank { auth.currentUser?.uid.orEmpty() }
+        if (uid.isBlank()) return
+        val phone = senderProfile.phoneLookup.ifBlank {
+            runCatching {
+                db.collection("users").document(uid).get().await().getString("phone").orEmpty()
+            }.getOrDefault("")
+        }
+        TelegramNotifier.notifyContentViolation(
+            senderUid = uid,
+            senderName = senderProfile.name,
+            senderUsername = senderProfile.username,
+            senderPhone = phone,
+            violationType = violationType,
+            flaggedSnippet = flaggedSnippet,
+            matchedWords = matchedWords,
+            chatId = chatId
+        )
     }
 }

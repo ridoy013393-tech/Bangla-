@@ -85,7 +85,7 @@ service cloud.firestore {
              data.keys().hasOnly([
                'uid', 'name', 'username', 'phoneLookup', 'photoUrl', 'about',
                'online', 'discoverable', 'showOnlineStatus', 'showLastSeen',
-               'showReadReceipts', 'showProfilePhoto', 'showAbout',
+               'showReadReceipts', 'showProfilePhoto', 'showAbout', 'verified',
                'lastSeen', 'createdAt', 'updatedAt'
              ]) &&
              data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
@@ -102,6 +102,7 @@ service cloud.firestore {
              data.showReadReceipts is bool &&
              (!('showProfilePhoto' in data) || data.showProfilePhoto == null || data.showProfilePhoto is bool) &&
              (!('showAbout' in data) || data.showAbout == null || data.showAbout is bool) &&
+             (!('verified' in data) || data.verified == null || data.verified is bool) &&
              data.lastSeen is timestamp && data.lastSeen <= request.time &&
              data.createdAt is timestamp && data.createdAt <= request.time &&
              data.updatedAt is timestamp && data.updatedAt <= request.time;
@@ -346,6 +347,38 @@ service cloud.firestore {
              data.updatedAt is timestamp && data.updatedAt <= request.time;
     }
 
+    function isValidAppBroadcast(data) {
+      return data.keys().hasAll(['active', 'broadcastId', 'title', 'message', 'severity', 'updatedAt']) &&
+             data.keys().hasOnly(['active', 'broadcastId', 'title', 'message', 'severity', 'updatedBy', 'updatedAt']) &&
+             data.active is bool &&
+             data.broadcastId is string && data.broadcastId.size() <= 64 &&
+             data.title is string && data.title.size() <= 120 &&
+             data.message is string && data.message.size() <= 600 &&
+             data.severity in ['info', 'update', 'warning'] &&
+             (!('updatedBy' in data) || data.updatedBy == null || (data.updatedBy is string && data.updatedBy.size() <= 120)) &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidModerationSettings(data) {
+      return data.keys().hasAll([
+               'profanityFilterEnabled', 'profanityMode',
+               'spamProtectionEnabled', 'telegramAlertsEnabled',
+               'customBlockedWords', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'profanityFilterEnabled', 'profanityMode',
+               'spamProtectionEnabled', 'telegramAlertsEnabled',
+               'customBlockedWords', 'updatedBy', 'updatedAt'
+             ]) &&
+             data.profanityFilterEnabled is bool &&
+             data.profanityMode in ['block', 'mask'] &&
+             data.spamProtectionEnabled is bool &&
+             data.telegramAlertsEnabled is bool &&
+             data.customBlockedWords is list && data.customBlockedWords.size() <= 200 &&
+             (!('updatedBy' in data) || data.updatedBy == null || (data.updatedBy is string && data.updatedBy.size() <= 120)) &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
     // --- PUBLIC PROFILES COLLECTION (NO PII) ---
 
     match /profiles/{uid} {
@@ -355,20 +388,24 @@ service cloud.firestore {
       allow create: if isOwner(uid) &&
                        isValidId(uid) &&
                        incoming().uid == uid &&
+                       incoming().get('verified', false) == false &&
                        isValidPublicProfile(incoming());
 
-      allow update: if isOwner(uid) &&
-                       isValidId(uid) &&
+      allow update: if isValidId(uid) &&
                        isValidPublicProfile(incoming()) &&
                        incoming().uid == existing().uid &&
                        incoming().createdAt == existing().createdAt && (
-                         incoming().diff(existing()).affectedKeys().hasOnly([
-                           'name', 'username', 'phoneLookup', 'photoUrl', 'about',
-                           'discoverable', 'showOnlineStatus', 'showLastSeen',
-                           'showReadReceipts', 'showProfilePhoto', 'showAbout',
-                           'online', 'lastSeen', 'updatedAt'
-                         ]) ||
-                         incoming().diff(existing()).affectedKeys().hasOnly(['online', 'lastSeen', 'updatedAt'])
+                         (isOwner(uid) && (
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'name', 'username', 'phoneLookup', 'photoUrl', 'about',
+                             'discoverable', 'showOnlineStatus', 'showLastSeen',
+                             'showReadReceipts', 'showProfilePhoto', 'showAbout',
+                             'online', 'lastSeen', 'updatedAt'
+                           ]) ||
+                           incoming().diff(existing()).affectedKeys().hasOnly(['online', 'lastSeen', 'updatedAt'])
+                         )) ||
+                         (isSuperAdmin() &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['verified', 'updatedAt']))
                        );
 
       allow delete: if (isOwner(uid) || isSuperAdmin()) && isValidId(uid);
@@ -490,6 +527,18 @@ service cloud.firestore {
                        incoming().uid == uid &&
                        isValidModerationStatus(incoming());
       allow delete: if isSuperAdmin() && isValidId(uid);
+    }
+
+    // --- GLOBAL APP CONFIG (BROADCAST NOTICES & AUTO-MODERATION SETTINGS) ---
+
+    match /appConfig/{configId} {
+      allow get: if isSignedIn() && configId in ['broadcast', 'moderation'];
+      allow list: if isSuperAdmin();
+      allow create, update: if isSuperAdmin() && (
+        (configId == 'broadcast' && isValidAppBroadcast(incoming())) ||
+        (configId == 'moderation' && isValidModerationSettings(incoming()))
+      );
+      allow delete: if isSuperAdmin() && configId in ['broadcast', 'moderation'];
     }
 
     // --- 24-HOUR STATUS STORIES ---
