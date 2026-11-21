@@ -147,12 +147,14 @@ fun HomeScreen(
 
     val allActiveChats = remember(chatsState, viewModel.currentUserId) {
         (chatsState as? UiState.Success)?.data
-            ?.filter { !it.isArchivedFor(viewModel.currentUserId) }
+            ?.filter { !it.isHiddenFor(viewModel.currentUserId) && !it.isArchivedFor(viewModel.currentUserId) }
             .orEmpty()
     }
 
     val totalUnread = remember(chatsState, viewModel.currentUserId) {
-        (chatsState as? UiState.Success)?.data?.sumOf { it.unreadFor(viewModel.currentUserId) } ?: 0
+        (chatsState as? UiState.Success)?.data
+            ?.filter { !it.isHiddenFor(viewModel.currentUserId) }
+            ?.sumOf { it.unreadFor(viewModel.currentUserId) } ?: 0
     }
     val unreadChatsCount = remember(allActiveChats, viewModel.currentUserId) {
         allActiveChats.count { it.unreadFor(viewModel.currentUserId) > 0 }
@@ -469,6 +471,18 @@ fun HomeScreen(
                                     )
                                 }
                             },
+                            onClearChat = { chat ->
+                                viewModel.clearChatForMe(chat, strings.chatClearedToast)
+                            },
+                            onDeleteChat = { chat ->
+                                viewModel.deleteChatForMe(chat, strings.chatDeletedToast)
+                            },
+                            onLeaveGroup = { chat ->
+                                viewModel.leaveGroupFromHome(chat, strings.leftGroupToast)
+                            },
+                            onDeleteGroup = { chat ->
+                                viewModel.deleteGroupFromHome(chat, strings.groupDeletedToast)
+                            },
                             onRequestUnlockChat = { chat -> unlockTargetChat = chat },
                             onExploreContacts = { selectedTab = HomeTab.CONTACTS },
                             onCreateGroupClick = { showCreateGroupDialog = true },
@@ -695,9 +709,11 @@ fun HomeScreen(
     if (showCreateGroupDialog) {
         CreateGroupDialog(
             availableContacts = discoverableProfiles,
-            onCreateGroup = { name, members, photoUri ->
+            onLookupUsername = { query -> viewModel.lookupUserByExactUsername(query) },
+            onCreateGroup = { name, description, members, photoUri ->
                 viewModel.createGroupChat(
                     groupName = name,
+                    groupDescription = description,
                     selectedMembers = members,
                     photoUri = photoUri,
                     successToast = strings.groupCreatedToast,

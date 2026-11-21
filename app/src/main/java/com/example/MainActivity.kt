@@ -497,7 +497,9 @@ private fun AuthenticatedBanglaChatHost(
     val isNetworkOnline by mainViewModel.isNetworkOnline.collectAsStateWithLifecycle()
     val updateCheckResult by mainViewModel.updateCheckResult.collectAsStateWithLifecycle()
     val blockedUids = remember(blockedUsers) { blockedUsers.map { it.blockedUid }.toSet() }
-    val allChats = (chatsState as? UiState.Success)?.data.orEmpty()
+    val allChats = remember(chatsState, currentUserId) {
+        (chatsState as? UiState.Success)?.data.orEmpty().filter { !it.isHiddenFor(currentUserId) }
+    }
     val discoverableContacts = (discoverableUsersState as? UiState.Success)?.data.orEmpty()
     val strings = LocalAppStrings.current
 
@@ -624,6 +626,11 @@ private fun AuthenticatedBanglaChatHost(
                     onUnblockPeer = { uid -> mainViewModel.unblockUser(uid) },
                     onReportPeer = { uid, reason, details ->
                         mainViewModel.submitReport(uid, reason, details, strings.reportSubmitted)
+                    },
+                    onOpenDirectChatWithMember = { member ->
+                        mainViewModel.startChatWith(member) { directChatId ->
+                            activeChatId = directChatId
+                        }
                     }
                 )
             }

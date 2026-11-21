@@ -267,6 +267,9 @@ class MainViewModel(
         _usernameSearchState.value = UsernameSearchState.Idle
     }
 
+    suspend fun lookupUserByExactUsername(rawQuery: String): Result<PublicProfile?> =
+        repository.findProfileByExactUsername(rawQuery, currentUserId)
+
     fun setOnlinePresence(online: Boolean) {
         viewModelScope.launch {
             bootstrapJob.join()
@@ -305,6 +308,7 @@ class MainViewModel(
 
     fun createGroupChat(
         groupName: String,
+        groupDescription: String = "",
         selectedMembers: List<PublicProfile>,
         photoUri: Uri?,
         successToast: String,
@@ -322,7 +326,7 @@ class MainViewModel(
                     .onSuccess { photoUrl = it.downloadUrl }
                     .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Group photo upload failed") }
             }
-            repository.createGroupChat(me, selectedMembers, groupName, photoUrl)
+            repository.createGroupChat(me, selectedMembers, groupName, groupDescription, photoUrl)
                 .onSuccess { chatId ->
                     _snackbarEvents.tryEmit(successToast)
                     onGroupCreated(chatId)
@@ -561,6 +565,38 @@ class MainViewModel(
         viewModelScope.launch {
             repository.updateChatParticipantFlags(chat, currentUserId, toggleArchive = true)
                 .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Failed to update chat") }
+        }
+    }
+
+    fun clearChatForMe(chat: Chat, successToast: String) {
+        viewModelScope.launch {
+            repository.clearChatForMe(chat, currentUserId)
+                .onSuccess { _snackbarEvents.tryEmit(successToast) }
+                .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Failed to clear chat") }
+        }
+    }
+
+    fun deleteChatForMe(chat: Chat, successToast: String) {
+        viewModelScope.launch {
+            repository.deleteChatForMe(chat, currentUserId)
+                .onSuccess { _snackbarEvents.tryEmit(successToast) }
+                .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Failed to delete chat") }
+        }
+    }
+
+    fun leaveGroupFromHome(chat: Chat, successToast: String) {
+        viewModelScope.launch {
+            repository.leaveGroup(chat, currentUserId, myProfile.value)
+                .onSuccess { _snackbarEvents.tryEmit(successToast) }
+                .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Failed to leave group") }
+        }
+    }
+
+    fun deleteGroupFromHome(chat: Chat, successToast: String) {
+        viewModelScope.launch {
+            repository.deleteGroupChat(chat)
+                .onSuccess { _snackbarEvents.tryEmit(successToast) }
+                .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Failed to delete group") }
         }
     }
 

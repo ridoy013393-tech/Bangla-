@@ -25,6 +25,7 @@ import com.google.firebase.auth.auth
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.snapshots
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -451,7 +452,7 @@ class BanglaChatRepository(
         val path = "chats/$chatId/messages"
         return db.collection("chats").document(chatId)
             .collection("messages")
-            .whereArrayContains("participants", currentUserId)
+            .orderBy("timestamp", Query.Direction.DESCENDING)
             .limit(limit.coerceIn(20L, 500L))
             .snapshots()
             .map { snap ->
@@ -775,11 +776,27 @@ class BanglaChatRepository(
                     "lastMessageTime" to FieldValue.serverTimestamp(),
                     "unreadCounts" to mapOf(myUid to 0L, peerUid to 0L),
                     "typingUids" to emptyList<String>(),
+                    "hiddenBy" to emptyList<String>(),
                     "createdBy" to myUid,
                     "createdAt" to FieldValue.serverTimestamp(),
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
                 chatRef.set(payload).await()
+            } else {
+                val existingChat = snap.toObject(
+                    Chat::class.java,
+                    DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+                )
+                if (existingChat != null && existingChat.isHiddenFor(myUid)) {
+                    runCatching {
+                        chatRef.update(
+                            mapOf(
+                                "hiddenBy" to existingChat.hiddenBy.filter { it != myUid },
+                                "updatedAt" to FieldValue.serverTimestamp()
+                            )
+                        ).await()
+                    }
+                }
             }
             Result.success(chatId)
         } catch (e: CancellationException) {
@@ -790,20 +807,70 @@ class BanglaChatRepository(
         }
     }
 
+    private suspend fun postGroupSystemEvent(
+        chatId: String,
+        participants: List<String>,
+        actorUid: String,
+        actorName: String,
+        eventText: String,
+        updateLastMessage: Boolean = true
+    ) {
+        val cleanText = eventText.trim().take(500)
+        if (cleanText.isEmpty() || participants.isEmpty()) return
+        val safeActorName = actorName.ifBlank { "Bangla Chat User" }.take(60)
+        val chatRef = db.collection("chats").document(chatId)
+        val msgRef = chatRef.collection("messages").document()
+        val messagePayload = mapOf(
+            "chatId" to chatId,
+            "senderId" to actorUid,
+            "senderName" to safeActorName,
+            "participants" to participants,
+            "text" to cleanText,
+            "type" to "system",
+            "delivered" to true,
+            "read" to true,
+            "deleted" to false,
+            "deletedFor" to emptyList<String>(),
+            "edited" to false,
+            "forwarded" to false,
+            "reactions" to emptyMap<String, String>(),
+            "starredBy" to emptyList<String>(),
+            "timestamp" to FieldValue.serverTimestamp(),
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+        msgRef.set(messagePayload).await()
+        if (updateLastMessage) {
+            chatRef.update(
+                mapOf(
+                    "lastMessage" to cleanText,
+                    "lastMessageType" to "system",
+                    "lastSenderId" to actorUid,
+                    "lastMessageTime" to FieldValue.serverTimestamp(),
+                    "lastMessageDelivered" to true,
+                    "lastMessageRead" to false,
+                    "hiddenBy" to emptyList<String>(),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+        }
+    }
+
     suspend fun createGroupChat(
         creator: PublicProfile,
         members: List<PublicProfile>,
         groupName: String,
+        groupDescription: String = "",
         groupPhotoUrl: String = ""
     ): Result<String> {
         val cleanName = groupName.trim().take(80)
+        val cleanDesc = groupDescription.trim().take(300)
         val chatId = "group_${UUID.randomUUID().toString().replace("-", "").take(16)}"
         val path = "chats/$chatId"
         return try {
             val uid = requireUserId()
             check(uid == creator.uid) { "Signed-in user mismatch" }
             require(cleanName.isNotEmpty()) { "Group name cannot be empty" }
-            val distinctMembers = (listOf(creator) + members).distinctBy { it.uid }.take(50)
+            val distinctMembers = (listOf(creator) + members).distinctBy { it.uid }.take(Chat.MAX_GROUP_MEMBERS)
             require(distinctMembers.size >= 2) { "Select at least one member for the group" }
 
             val participantIds = distinctMembers.map { it.uid }
@@ -814,6 +881,8 @@ class BanglaChatRepository(
                 it.uid to it.photoUrl.take(500)
             }
             val unreadMap = participantIds.associateWith { 0L }
+            val creatorName = creator.name.ifBlank { "Bangla Chat User" }.take(60)
+            val createdEvent = "$creatorName গ্রুপটি তৈরি করেছেন"
 
             val payload = mapOf(
                 "participants" to participantIds,
@@ -821,19 +890,32 @@ class BanglaChatRepository(
                 "participantPhotos" to photosMap,
                 "isGroup" to true,
                 "groupName" to cleanName,
+                "groupDescription" to cleanDesc,
                 "groupPhotoUrl" to groupPhotoUrl.take(500),
                 "adminUids" to listOf(uid),
-                "lastMessage" to "",
-                "lastMessageType" to "text",
+                "onlyAdminsCanSend" to false,
+                "lastMessage" to createdEvent,
+                "lastMessageType" to "system",
                 "lastSenderId" to uid,
                 "lastMessageTime" to FieldValue.serverTimestamp(),
                 "unreadCounts" to unreadMap,
                 "typingUids" to emptyList<String>(),
+                "hiddenBy" to emptyList<String>(),
                 "createdBy" to uid,
                 "createdAt" to FieldValue.serverTimestamp(),
                 "updatedAt" to FieldValue.serverTimestamp()
             )
             db.collection("chats").document(chatId).set(payload).await()
+            runCatching {
+                postGroupSystemEvent(
+                    chatId = chatId,
+                    participants = participantIds,
+                    actorUid = uid,
+                    actorName = creatorName,
+                    eventText = createdEvent,
+                    updateLastMessage = false
+                )
+            }
             Result.success(chatId)
         } catch (e: CancellationException) {
             throw e
@@ -843,18 +925,35 @@ class BanglaChatRepository(
         }
     }
 
-    suspend fun renameGroup(chatId: String, newName: String): Result<Unit> {
-        val path = "chats/$chatId"
+    suspend fun renameGroup(
+        chat: Chat,
+        actorProfile: PublicProfile?,
+        newName: String
+    ): Result<Unit> {
+        val path = "chats/${chat.id}"
         return try {
-            requireUserId()
+            val uid = requireUserId()
+            require(chat.isGroup && chat.isAdmin(uid)) { "Only group admins can rename this group" }
             val clean = newName.trim().take(80)
             require(clean.isNotEmpty()) { "Group name cannot be empty" }
-            db.collection("chats").document(chatId).update(
+            db.collection("chats").document(chat.id).update(
                 mapOf(
                     "groupName" to clean,
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
             ).await()
+            val actorName = actorProfile?.name?.ifBlank { chat.participantNames[uid] }
+                ?: chat.participantNames[uid]
+                ?: "Admin"
+            runCatching {
+                postGroupSystemEvent(
+                    chatId = chat.id,
+                    participants = chat.participants,
+                    actorUid = uid,
+                    actorName = actorName,
+                    eventText = "$actorName গ্রুপের নাম পরিবর্তন করে \"$clean\" করেছেন"
+                )
+            }
             Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
@@ -864,13 +963,96 @@ class BanglaChatRepository(
         }
     }
 
-    suspend fun addGroupMembers(chat: Chat, newMembers: List<PublicProfile>): Result<Unit> {
+    suspend fun updateGroupDescription(
+        chat: Chat,
+        actorProfile: PublicProfile?,
+        description: String
+    ): Result<Unit> {
         val path = "chats/${chat.id}"
         return try {
-            requireUserId()
-            val added = newMembers.filter { it.uid !in chat.participants }
+            val uid = requireUserId()
+            require(chat.isGroup && chat.isAdmin(uid)) { "Only group admins can update group description" }
+            val clean = description.trim().take(300)
+            db.collection("chats").document(chat.id).update(
+                mapOf(
+                    "groupDescription" to clean,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+            val actorName = actorProfile?.name?.ifBlank { chat.participantNames[uid] }
+                ?: chat.participantNames[uid]
+                ?: "Admin"
+            runCatching {
+                postGroupSystemEvent(
+                    chatId = chat.id,
+                    participants = chat.participants,
+                    actorUid = uid,
+                    actorName = actorName,
+                    eventText = "$actorName গ্রুপের বিবরণ আপডেট করেছেন"
+                )
+            }
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateGroupPhoto(
+        chat: Chat,
+        actorProfile: PublicProfile?,
+        photoUrl: String
+    ): Result<Unit> {
+        val path = "chats/${chat.id}"
+        return try {
+            val uid = requireUserId()
+            require(chat.isGroup && chat.isAdmin(uid)) { "Only group admins can change group photo" }
+            db.collection("chats").document(chat.id).update(
+                mapOf(
+                    "groupPhotoUrl" to photoUrl.trim().take(500),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+            val actorName = actorProfile?.name?.ifBlank { chat.participantNames[uid] }
+                ?: chat.participantNames[uid]
+                ?: "Admin"
+            runCatching {
+                postGroupSystemEvent(
+                    chatId = chat.id,
+                    participants = chat.participants,
+                    actorUid = uid,
+                    actorName = actorName,
+                    eventText = "$actorName গ্রুপের ছবি পরিবর্তন করেছেন"
+                )
+            }
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun addGroupMembers(
+        chat: Chat,
+        actorProfile: PublicProfile?,
+        newMembers: List<PublicProfile>
+    ): Result<Unit> {
+        val path = "chats/${chat.id}"
+        return try {
+            val uid = requireUserId()
+            require(chat.isGroup && chat.isAdmin(uid)) { "Only group admins can add members" }
+            val remainingSlots = (Chat.MAX_GROUP_MEMBERS - chat.participants.size).coerceAtLeast(0)
+            require(remainingSlots > 0) { "Group has reached the maximum limit of ${Chat.MAX_GROUP_MEMBERS} members" }
+            val added = newMembers
+                .distinctBy { it.uid }
+                .filter { it.uid !in chat.participants }
+                .take(remainingSlots)
             if (added.isEmpty()) return Result.success(Unit)
-            val updatedParticipants = (chat.participants + added.map { it.uid }).distinct().take(50)
+            val updatedParticipants = (chat.participants + added.map { it.uid }).distinct().take(Chat.MAX_GROUP_MEMBERS)
             val updatedNames = chat.participantNames.toMutableMap().apply {
                 added.forEach { put(it.uid, it.name.ifBlank { "Bangla Chat User" }.take(60)) }
             }
@@ -889,6 +1071,23 @@ class BanglaChatRepository(
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
             ).await()
+            val actorName = actorProfile?.name?.ifBlank { chat.participantNames[uid] }
+                ?: chat.participantNames[uid]
+                ?: "Admin"
+            val addedSummary = if (added.size == 1) {
+                added.first().name.ifBlank { "New member" }
+            } else {
+                "${added.first().name.ifBlank { "Member" }} ও আরও ${added.size - 1} জনকে"
+            }
+            runCatching {
+                postGroupSystemEvent(
+                    chatId = chat.id,
+                    participants = updatedParticipants,
+                    actorUid = uid,
+                    actorName = actorName,
+                    eventText = "$actorName $addedSummary গ্রুপে যোগ করেছেন"
+                )
+            }
             Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
@@ -898,19 +1097,47 @@ class BanglaChatRepository(
         }
     }
 
-    suspend fun leaveGroup(chat: Chat, currentUserId: String): Result<Unit> {
+    suspend fun leaveGroup(
+        chat: Chat,
+        currentUserId: String,
+        actorProfile: PublicProfile? = null
+    ): Result<Unit> {
         val path = "chats/${chat.id}"
         return try {
             val uid = requireUserId()
             check(uid == currentUserId) { "Signed-in user mismatch" }
+            require(chat.isGroup) { "Not a group chat" }
             val remaining = chat.participants.filter { it != uid }
-            if (remaining.isEmpty()) return Result.success(Unit)
-            val remainingAdmins = chat.adminUids.filter { it != uid }.ifEmpty { listOf(remaining.first()) }
+            if (remaining.isEmpty()) {
+                return deleteGroupChat(chat)
+            }
+            val actorName = actorProfile?.name?.ifBlank { chat.participantNames[uid] }
+                ?: chat.participantNames[uid]
+                ?: "Member"
+            // Post leave event while still a participant so remaining members see who left
+            runCatching {
+                postGroupSystemEvent(
+                    chatId = chat.id,
+                    participants = chat.participants,
+                    actorUid = uid,
+                    actorName = actorName,
+                    eventText = "$actorName গ্রুপ ত্যাগ করেছেন"
+                )
+            }
+            val remainingAdmins = chat.adminUids
+                .filter { it != uid && it in remaining }
+                .ifEmpty { listOf(remaining.first()) }
             db.collection("chats").document(chat.id).update(
                 mapOf(
                     "participants" to remaining,
                     "adminUids" to remainingAdmins,
+                    "participantNames" to chat.participantNames.filterKeys { it != uid },
+                    "participantPhotos" to chat.participantPhotos.filterKeys { it != uid },
+                    "unreadCounts" to chat.unreadCounts.filterKeys { it != uid },
                     "typingUids" to chat.typingUids.filter { it != uid },
+                    "mutedBy" to chat.mutedBy.filter { it != uid },
+                    "pinnedBy" to chat.pinnedBy.filter { it != uid },
+                    "archivedBy" to chat.archivedBy.filter { it != uid },
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
             ).await()
@@ -923,16 +1150,115 @@ class BanglaChatRepository(
         }
     }
 
-    suspend fun toggleGroupOnlyAdminsCanSend(chatId: String, onlyAdmins: Boolean): Result<Unit> {
-        val path = "chats/$chatId"
+    suspend fun deleteGroupChat(chat: Chat): Result<Unit> {
+        val path = "chats/${chat.id}"
         return try {
-            requireUserId()
-            db.collection("chats").document(chatId).update(
+            val uid = requireUserId()
+            require(chat.isGroup) { "Only group chats can be permanently deleted" }
+            val canDelete = chat.isAdmin(uid) || chat.participants == listOf(uid) || isCurrentUserSuperAdmin()
+            require(canDelete) { "Only group creator or group admin can delete this group" }
+
+            val chatRef = db.collection("chats").document(chat.id)
+            // Delete subcollection messages in batches before deleting the chat document
+            repeat(10) {
+                val msgSnap = chatRef.collection("messages").limit(100).get().await()
+                if (msgSnap.isEmpty) return@repeat
+                val batch = db.batch()
+                msgSnap.documents.forEach { doc -> batch.delete(doc.reference) }
+                batch.commit().await()
+            }
+            chatRef.delete().await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.DELETE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun clearChatForMe(chat: Chat, currentUserId: String): Result<Unit> {
+        val path = "chats/${chat.id}"
+        return try {
+            val uid = requireUserId()
+            check(uid == currentUserId) { "Signed-in user mismatch" }
+            require(uid in chat.participants) { "Not a participant of this chat" }
+            val updatedUnread = chat.unreadCounts.toMutableMap().apply { put(uid, 0L) }
+            db.collection("chats").document(chat.id).update(
+                mapOf(
+                    "clearedAt.$uid" to FieldValue.serverTimestamp(),
+                    "unreadCounts" to updatedUnread,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteChatForMe(chat: Chat, currentUserId: String): Result<Unit> {
+        val path = "chats/${chat.id}"
+        return try {
+            val uid = requireUserId()
+            check(uid == currentUserId) { "Signed-in user mismatch" }
+            require(uid in chat.participants) { "Not a participant of this chat" }
+            val updatedHidden = (chat.hiddenBy + uid).distinct().take(Chat.MAX_GROUP_MEMBERS)
+            val updatedUnread = chat.unreadCounts.toMutableMap().apply { put(uid, 0L) }
+            db.collection("chats").document(chat.id).update(
+                mapOf(
+                    "hiddenBy" to updatedHidden,
+                    "pinnedBy" to chat.pinnedBy.filter { it != uid },
+                    "archivedBy" to chat.archivedBy.filter { it != uid },
+                    "clearedAt.$uid" to FieldValue.serverTimestamp(),
+                    "unreadCounts" to updatedUnread,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun toggleGroupOnlyAdminsCanSend(
+        chat: Chat,
+        actorProfile: PublicProfile?,
+        onlyAdmins: Boolean
+    ): Result<Unit> {
+        val path = "chats/${chat.id}"
+        return try {
+            val uid = requireUserId()
+            require(chat.isGroup && chat.isAdmin(uid)) { "Only group admins can change messaging settings" }
+            db.collection("chats").document(chat.id).update(
                 mapOf(
                     "onlyAdminsCanSend" to onlyAdmins,
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
             ).await()
+            val actorName = actorProfile?.name?.ifBlank { chat.participantNames[uid] }
+                ?: chat.participantNames[uid]
+                ?: "Admin"
+            val eventText = if (onlyAdmins) {
+                "$actorName সেটিংস পরিবর্তন করেছেন: এখন শুধু অ্যাডমিনরা মেসেজ পাঠাতে পারবেন"
+            } else {
+                "$actorName সেটিংস পরিবর্তন করেছেন: এখন সব সদস্য মেসেজ পাঠাতে পারবেন"
+            }
+            runCatching {
+                postGroupSystemEvent(
+                    chatId = chat.id,
+                    participants = chat.participants,
+                    actorUid = uid,
+                    actorName = actorName,
+                    eventText = eventText
+                )
+            }
             Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
@@ -942,17 +1268,22 @@ class BanglaChatRepository(
         }
     }
 
-    suspend fun toggleGroupMemberAdmin(chat: Chat, targetUid: String): Result<Unit> {
+    suspend fun toggleGroupMemberAdmin(
+        chat: Chat,
+        actorProfile: PublicProfile?,
+        targetUid: String
+    ): Result<Unit> {
         val path = "chats/${chat.id}"
         return try {
             val currentUid = requireUserId()
-            require(chat.isAdmin(currentUid)) { "Only admins can change admin roles" }
+            require(chat.isGroup && chat.isAdmin(currentUid)) { "Only admins can change admin roles" }
             require(targetUid in chat.participants) { "User is not a group member" }
             require(targetUid != chat.createdBy) { "Cannot demote group creator" }
-            val updatedAdmins = if (targetUid in chat.adminUids) {
+            val wasAdmin = targetUid in chat.adminUids
+            val updatedAdmins = if (wasAdmin) {
                 chat.adminUids.filter { it != targetUid }
             } else {
-                (chat.adminUids + targetUid).distinct().take(50)
+                (chat.adminUids + targetUid).distinct().take(Chat.MAX_GROUP_MEMBERS)
             }
             db.collection("chats").document(chat.id).update(
                 mapOf(
@@ -960,6 +1291,24 @@ class BanglaChatRepository(
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
             ).await()
+            val actorName = actorProfile?.name?.ifBlank { chat.participantNames[currentUid] }
+                ?: chat.participantNames[currentUid]
+                ?: "Admin"
+            val targetName = chat.participantNames[targetUid].orEmpty().ifBlank { "Member" }
+            val eventText = if (wasAdmin) {
+                "$actorName $targetName-কে অ্যাডমিন পদ থেকে সরিয়ে দিয়েছেন"
+            } else {
+                "$actorName $targetName-কে গ্রুপ অ্যাডমিন বানিয়েছেন"
+            }
+            runCatching {
+                postGroupSystemEvent(
+                    chatId = chat.id,
+                    participants = chat.participants,
+                    actorUid = currentUid,
+                    actorName = actorName,
+                    eventText = eventText
+                )
+            }
             Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
@@ -969,14 +1318,19 @@ class BanglaChatRepository(
         }
     }
 
-    suspend fun removeGroupMember(chat: Chat, targetUid: String): Result<Unit> {
+    suspend fun removeGroupMember(
+        chat: Chat,
+        actorProfile: PublicProfile?,
+        targetUid: String
+    ): Result<Unit> {
         val path = "chats/${chat.id}"
         return try {
             val currentUid = requireUserId()
-            require(chat.isAdmin(currentUid)) { "Only admins can remove members" }
+            require(chat.isGroup && chat.isAdmin(currentUid)) { "Only admins can remove members" }
             require(targetUid != currentUid && targetUid != chat.createdBy) { "Cannot remove this member" }
             val remaining = chat.participants.filter { it != targetUid }
             require(remaining.isNotEmpty()) { "Group must keep at least one member" }
+            val targetName = chat.participantNames[targetUid].orEmpty().ifBlank { "Member" }
             val updatedAdmins = chat.adminUids.filter { it != targetUid }
             val updatedNames = chat.participantNames.filterKeys { it != targetUid }
             val updatedPhotos = chat.participantPhotos.filterKeys { it != targetUid }
@@ -988,9 +1342,25 @@ class BanglaChatRepository(
                     "participantNames" to updatedNames,
                     "participantPhotos" to updatedPhotos,
                     "unreadCounts" to updatedUnread,
+                    "typingUids" to chat.typingUids.filter { it != targetUid },
+                    "mutedBy" to chat.mutedBy.filter { it != targetUid },
+                    "pinnedBy" to chat.pinnedBy.filter { it != targetUid },
+                    "archivedBy" to chat.archivedBy.filter { it != targetUid },
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
             ).await()
+            val actorName = actorProfile?.name?.ifBlank { chat.participantNames[currentUid] }
+                ?: chat.participantNames[currentUid]
+                ?: "Admin"
+            runCatching {
+                postGroupSystemEvent(
+                    chatId = chat.id,
+                    participants = remaining,
+                    actorUid = currentUid,
+                    actorName = actorName,
+                    eventText = "$actorName $targetName-কে গ্রুপ থেকে সরিয়ে দিয়েছেন"
+                )
+            }
             Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
@@ -1018,14 +1388,26 @@ class BanglaChatRepository(
         val messagesPath = "chats/$chatId/messages"
         return try {
             val uid = requireUserId()
-            require(uid in chat.participants) { "Not a participant of this chat" }
+            // For group chats, read the freshest participants snapshot to avoid race-condition PERMISSION_DENIED
+            val liveChat = if (chat.isGroup) {
+                val snap = db.collection("chats").document(chatId).get().await()
+                snap.toObject(Chat::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+                    ?: throw IllegalStateException("This group no longer exists")
+            } else {
+                chat
+            }
+            require(uid in liveChat.participants) { "You are no longer a participant of this chat" }
+            if (liveChat.isGroup && liveChat.onlyAdminsCanSend && !liveChat.isAdmin(uid)) {
+                throw IllegalStateException("Only group admins can send messages")
+            }
+
             val cleanText = text.trim().take(4000)
             require(cleanText.isNotEmpty() || !mediaUrl.isNullOrBlank()) { "Message cannot be empty" }
             val safeType = if (type in setOf("text", "image", "document", "audio")) type else "text"
             val isViewOnceImage = viewOnce && safeType == "image"
 
-            val expiresAtTimestamp = if (chat.disappearingHours in setOf(24L, 168L)) {
-                Timestamp(Date(System.currentTimeMillis() + chat.disappearingHours * 3_600_000L))
+            val expiresAtTimestamp = if (liveChat.disappearingHours in setOf(24L, 168L)) {
+                Timestamp(Date(System.currentTimeMillis() + liveChat.disappearingHours * 3_600_000L))
             } else {
                 null
             }
@@ -1036,7 +1418,7 @@ class BanglaChatRepository(
                 "chatId" to chatId,
                 "senderId" to uid,
                 "senderName" to senderDisplayName,
-                "participants" to chat.participants,
+                "participants" to liveChat.participants,
                 "text" to cleanText,
                 "type" to safeType,
                 "mediaUrl" to mediaUrl?.take(1000),
@@ -1062,16 +1444,16 @@ class BanglaChatRepository(
 
             msgRef.set(messagePayload).await()
 
-            val newUnread = chat.unreadCounts.toMutableMap()
+            val newUnread = liveChat.unreadCounts.toMutableMap()
             newUnread[uid] = 0L
-            chat.participants.filter { it != uid }.forEach { otherUid ->
-                newUnread[otherUid] = (chat.unreadCounts[otherUid] ?: 0L) + 1L
+            liveChat.participants.filter { it != uid }.forEach { otherUid ->
+                newUnread[otherUid] = (liveChat.unreadCounts[otherUid] ?: 0L) + 1L
             }
 
-            val updatedNames = chat.participantNames.toMutableMap().apply {
+            val updatedNames = liveChat.participantNames.toMutableMap().apply {
                 put(uid, senderDisplayName)
             }
-            val updatedPhotos = chat.participantPhotos.toMutableMap().apply {
+            val updatedPhotos = liveChat.participantPhotos.toMutableMap().apply {
                 put(uid, senderProfile.photoUrl.take(500))
             }
 
@@ -1091,8 +1473,9 @@ class BanglaChatRepository(
                     "lastMessageTime" to FieldValue.serverTimestamp(),
                     "lastMessageDelivered" to false,
                     "lastMessageRead" to false,
+                    "hiddenBy" to emptyList<String>(),
                     "unreadCounts" to newUnread,
-                    "typingUids" to chat.typingUids.filter { it != uid },
+                    "typingUids" to liveChat.typingUids.filter { it != uid },
                     "participantNames" to updatedNames,
                     "participantPhotos" to updatedPhotos,
                     "updatedAt" to FieldValue.serverTimestamp()
@@ -1118,7 +1501,17 @@ class BanglaChatRepository(
         val messagesPath = "chats/$chatId/messages"
         return try {
             val uid = requireUserId()
-            require(uid in chat.participants) { "Not a participant of this chat" }
+            val liveChat = if (chat.isGroup) {
+                val snap = db.collection("chats").document(chatId).get().await()
+                snap.toObject(Chat::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+                    ?: throw IllegalStateException("This group no longer exists")
+            } else {
+                chat
+            }
+            require(uid in liveChat.participants) { "You are no longer a participant of this chat" }
+            if (liveChat.isGroup && liveChat.onlyAdminsCanSend && !liveChat.isAdmin(uid)) {
+                throw IllegalStateException("Only group admins can create polls")
+            }
             val cleanQuestion = question.trim().take(240)
             val cleanOptions = options.map { it.trim().take(80) }.filter { it.isNotEmpty() }.distinct().take(6)
             require(cleanQuestion.isNotEmpty()) { "Poll question cannot be empty" }
@@ -1130,7 +1523,7 @@ class BanglaChatRepository(
                 "chatId" to chatId,
                 "senderId" to uid,
                 "senderName" to senderDisplayName,
-                "participants" to chat.participants,
+                "participants" to liveChat.participants,
                 "text" to cleanQuestion,
                 "type" to "poll",
                 "pollQuestion" to cleanQuestion,
@@ -1148,13 +1541,13 @@ class BanglaChatRepository(
             )
             msgRef.set(messagePayload).await()
 
-            val newUnread = chat.unreadCounts.toMutableMap()
+            val newUnread = liveChat.unreadCounts.toMutableMap()
             newUnread[uid] = 0L
-            chat.participants.filter { it != uid }.forEach { otherUid ->
-                newUnread[otherUid] = (chat.unreadCounts[otherUid] ?: 0L) + 1L
+            liveChat.participants.filter { it != uid }.forEach { otherUid ->
+                newUnread[otherUid] = (liveChat.unreadCounts[otherUid] ?: 0L) + 1L
             }
-            val updatedNames = chat.participantNames.toMutableMap().apply { put(uid, senderDisplayName) }
-            val updatedPhotos = chat.participantPhotos.toMutableMap().apply { put(uid, senderProfile.photoUrl.take(500)) }
+            val updatedNames = liveChat.participantNames.toMutableMap().apply { put(uid, senderDisplayName) }
+            val updatedPhotos = liveChat.participantPhotos.toMutableMap().apply { put(uid, senderProfile.photoUrl.take(500)) }
 
             db.collection("chats").document(chatId).update(
                 mapOf(
@@ -1164,8 +1557,9 @@ class BanglaChatRepository(
                     "lastMessageTime" to FieldValue.serverTimestamp(),
                     "lastMessageDelivered" to false,
                     "lastMessageRead" to false,
+                    "hiddenBy" to emptyList<String>(),
                     "unreadCounts" to newUnread,
-                    "typingUids" to chat.typingUids.filter { it != uid },
+                    "typingUids" to liveChat.typingUids.filter { it != uid },
                     "participantNames" to updatedNames,
                     "participantPhotos" to updatedPhotos,
                     "updatedAt" to FieldValue.serverTimestamp()
@@ -1342,6 +1736,7 @@ class BanglaChatRepository(
                     "lastMessageTime" to FieldValue.serverTimestamp(),
                     "lastMessageDelivered" to (safeCallStatus == "answered"),
                     "lastMessageRead" to (safeCallStatus == "answered"),
+                    "hiddenBy" to emptyList<String>(),
                     "unreadCounts" to updatedUnread,
                     "typingUids" to (existingChat?.typingUids ?: emptyList()).filter { it != uid },
                     "participantNames" to updatedNames,
@@ -1458,7 +1853,6 @@ class BanglaChatRepository(
             }
             val undeliveredSnap = db.collection("chats").document(chat.id)
                 .collection("messages")
-                .whereArrayContains("participants", currentUserId)
                 .whereEqualTo("delivered", false)
                 .limit(20)
                 .get()

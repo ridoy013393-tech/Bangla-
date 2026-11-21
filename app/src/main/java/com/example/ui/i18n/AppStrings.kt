@@ -526,6 +526,44 @@ interface AppStrings {
     val adminFilterTesterClean: String
     val adminFilterTesterFlagged: String
     val defaultBroadcastTitle: String
+    // v1.8 Complete Group Management & Home/Chat Delete System
+    val deleteChatAction: String
+    val deleteChatConfirmTitle: String
+    val deleteChatConfirmMessage: String
+    val chatDeletedToast: String
+    val clearChatAction: String
+    val clearChatConfirmTitle: String
+    val clearChatConfirmMessage: String
+    val chatClearedToast: String
+    val groupCreatorBadge: String
+    val groupDescriptionLabel: String
+    val groupDescriptionHint: String
+    val groupNoDescription: String
+    val editGroupDescription: String
+    val changeGroupPhoto: String
+    val groupPhotoUpdatedToast: String
+    val groupDescriptionUpdatedToast: String
+    val groupRenamedToast: String
+    val groupMembersAddedToast: String
+    val deleteGroupAction: String
+    val deleteGroupConfirmTitle: String
+    val deleteGroupConfirmMessage: String
+    val groupDeletedToast: String
+    val leaveGroupConfirmTitle: String
+    val leaveGroupConfirmMessage: String
+    val leftGroupToast: String
+    val removeMemberConfirmTitle: String
+    val removeMemberConfirmMessage: String
+    val groupSearchMembersHint: String
+    val groupAddByUsernameHint: String
+    val groupMemberLimitReached: String
+    val groupMessageMemberDirect: String
+    val groupRemovedOrDeletedToast: String
+    val groupAdminsCountLabel: String
+    val groupOnlineCountLabel: String
+    val groupOnlyAdminsCanManageHint: String
+    val groupYouLabel: String
+    val groupAdminDeleteMessage: String
 }
 
 object BanglaStrings : AppStrings {
@@ -1025,6 +1063,43 @@ object BanglaStrings : AppStrings {
     override val adminFilterTesterClean = "নিরাপদ — কোনো নিষিদ্ধ শব্দ পাওয়া যায়নি"
     override val adminFilterTesterFlagged = "শনাক্ত হয়েছে"
     override val defaultBroadcastTitle = "অ্যাডমিন নোটিশ"
+    override val deleteChatAction = "চ্যাট ডিলিট করুন"
+    override val deleteChatConfirmTitle = "এই চ্যাট ডিলিট করবেন?"
+    override val deleteChatConfirmMessage = "এই ইউজারের চ্যাটটি আপনার হোম পেজ থেকে মুছে যাবে এবং আগের সব মেসেজ পরিষ্কার হয়ে যাবে। পরে চাইলে কন্টাক্ট থেকে আবার মেসেজ করতে পারবেন।"
+    override val chatDeletedToast = "চ্যাট ডিলিট করা হয়েছে"
+    override val clearChatAction = "চ্যাট হিস্ট্রি মুছুন"
+    override val clearChatConfirmTitle = "সব মেসেজ মুছে ফেলবেন?"
+    override val clearChatConfirmMessage = "এই চ্যাটের আগের সব মেসেজ শুধু আপনার স্ক্রিন থেকে পরিষ্কার হয়ে যাবে।"
+    override val chatClearedToast = "চ্যাট হিস্ট্রি পরিষ্কার করা হয়েছে"
+    override val groupCreatorBadge = "ক্রিয়েটর"
+    override val groupDescriptionLabel = "গ্রুপের বিবরণ"
+    override val groupDescriptionHint = "গ্রুপের নিয়ম বা বিবরণ লিখুন (ঐচ্ছিক)..."
+    override val groupNoDescription = "কোনো বিবরণ যোগ করা হয়নি"
+    override val editGroupDescription = "বিবরণ এডিট করুন"
+    override val changeGroupPhoto = "গ্রুপের ছবি পরিবর্তন"
+    override val groupPhotoUpdatedToast = "গ্রুপের ছবি আপডেট হয়েছে"
+    override val groupDescriptionUpdatedToast = "গ্রুপের বিবরণ আপডেট হয়েছে"
+    override val groupRenamedToast = "গ্রুপের নাম পরিবর্তন হয়েছে"
+    override val groupMembersAddedToast = "নতুন সদস্য গ্রুপে যোগ করা হয়েছে"
+    override val deleteGroupAction = "সম্পূর্ণ গ্রুপ ডিলিট করুন"
+    override val deleteGroupConfirmTitle = "সম্পূর্ণ গ্রুপ ডিলিট করবেন?"
+    override val deleteGroupConfirmMessage = "গ্রুপটি স্থায়ীভাবে মুছে যাবে এবং সকল সদস্যের কাছ থেকে এই গ্রুপ ও এর মেসেজগুলো সরিয়ে ফেলা হবে। এটি আর ফিরিয়ে আনা যাবে না।"
+    override val groupDeletedToast = "গ্রুপটি স্থায়ীভাবে ডিলিট করা হয়েছে"
+    override val leaveGroupConfirmTitle = "গ্রুপ ত্যাগ করতে চান?"
+    override val leaveGroupConfirmMessage = "আপনি এই গ্রুপ থেকে বের হয়ে যাবেন এবং নতুন মেসেজ পাবেন না।"
+    override val leftGroupToast = "আপনি গ্রুপ ত্যাগ করেছেন"
+    override val removeMemberConfirmTitle = "সদস্যকে রিমুভ করবেন?"
+    override val removeMemberConfirmMessage = "এই সদস্যকে গ্রুপ থেকে সরিয়ে দিলে তিনি আর গ্রুপের মেসেজ দেখতে বা পাঠাতে পারবেন না।"
+    override val groupSearchMembersHint = "নাম বা @ইউজারনেম দিয়ে খুঁজুন..."
+    override val groupAddByUsernameHint = "@username দিয়ে সদস্য খুঁজুন..."
+    override val groupMemberLimitReached = "গ্রুপের সর্বোচ্চ ৫০ জন সদস্য পূর্ণ হয়েছে"
+    override val groupMessageMemberDirect = "সরাসরি মেসেজ পাঠান"
+    override val groupRemovedOrDeletedToast = "আপনি আর এই গ্রুপের সদস্য নন বা গ্রুপটি ডিলিট হয়ে গেছে"
+    override val groupAdminsCountLabel = "অ্যাডমিন"
+    override val groupOnlineCountLabel = "অনলাইন"
+    override val groupOnlyAdminsCanManageHint = "শুধুমাত্র গ্রুপ ক্রিয়েটর বা অ্যাডমিন গ্রুপের নাম, ছবি, বিবরণ ও সদস্য পরিবর্তন করতে পারবেন।"
+    override val groupYouLabel = "আপনি"
+    override val groupAdminDeleteMessage = "সবার জন্য মুছুন (অ্যাডমিন)"
 }
 
 object EnglishStrings : AppStrings {
@@ -1524,6 +1599,43 @@ object EnglishStrings : AppStrings {
     override val adminFilterTesterClean = "Clean — no restricted words detected"
     override val adminFilterTesterFlagged = "Flagged"
     override val defaultBroadcastTitle = "Admin Notice"
+    override val deleteChatAction = "Delete Chat"
+    override val deleteChatConfirmTitle = "Delete this chat?"
+    override val deleteChatConfirmMessage = "This removes the conversation from your Home screen and clears previous messages for you. You can message them again anytime from Contacts."
+    override val chatDeletedToast = "Chat deleted"
+    override val clearChatAction = "Clear Chat History"
+    override val clearChatConfirmTitle = "Clear all messages?"
+    override val clearChatConfirmMessage = "All previous messages in this chat will be cleared from your view only."
+    override val chatClearedToast = "Chat history cleared"
+    override val groupCreatorBadge = "Creator"
+    override val groupDescriptionLabel = "Group Description"
+    override val groupDescriptionHint = "Write group rules or description (optional)..."
+    override val groupNoDescription = "No group description yet"
+    override val editGroupDescription = "Edit Description"
+    override val changeGroupPhoto = "Change Group Photo"
+    override val groupPhotoUpdatedToast = "Group photo updated"
+    override val groupDescriptionUpdatedToast = "Group description updated"
+    override val groupRenamedToast = "Group name updated"
+    override val groupMembersAddedToast = "Members added to group"
+    override val deleteGroupAction = "Delete Entire Group"
+    override val deleteGroupConfirmTitle = "Permanently delete this group?"
+    override val deleteGroupConfirmMessage = "This permanently deletes the group and its messages for all members. This action cannot be undone."
+    override val groupDeletedToast = "Group deleted permanently"
+    override val leaveGroupConfirmTitle = "Leave this group?"
+    override val leaveGroupConfirmMessage = "You will leave the group and stop receiving new messages from it."
+    override val leftGroupToast = "You left the group"
+    override val removeMemberConfirmTitle = "Remove member?"
+    override val removeMemberConfirmMessage = "This member will be removed from the group and will no longer see or send group messages."
+    override val groupSearchMembersHint = "Search by name or @username..."
+    override val groupAddByUsernameHint = "Find member by exact @username..."
+    override val groupMemberLimitReached = "Group has reached the 50-member limit"
+    override val groupMessageMemberDirect = "Message Directly"
+    override val groupRemovedOrDeletedToast = "You are no longer in this group or it was deleted"
+    override val groupAdminsCountLabel = "Admins"
+    override val groupOnlineCountLabel = "Online"
+    override val groupOnlyAdminsCanManageHint = "Only the group creator or admins can edit group details, manage members, or delete the group."
+    override val groupYouLabel = "You"
+    override val groupAdminDeleteMessage = "Delete for Everyone (Admin)"
 }
 
 fun stringsForLanguage(language: AppLanguage): AppStrings =

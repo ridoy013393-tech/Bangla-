@@ -22,17 +22,22 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ExitToApp
 import androidx.compose.material.icons.rounded.Archive
 import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.DeleteForever
+import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Done
 import androidx.compose.material.icons.rounded.DoneAll
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Group
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Mic
@@ -42,7 +47,9 @@ import androidx.compose.material.icons.rounded.Photo
 import androidx.compose.material.icons.rounded.Poll
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Unarchive
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -52,6 +59,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -81,6 +89,7 @@ import com.example.ui.components.formatConversationTime
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.BrandBlue
 import com.example.ui.theme.BrandPurple
+import com.example.ui.theme.DangerRed
 import com.example.ui.theme.OnlineGreen
 import com.example.ui.theme.ReadTickBlue
 import kotlinx.coroutines.delay
@@ -114,6 +123,10 @@ fun ChatsTab(
     onToggleMuteChat: (Chat) -> Unit,
     onToggleArchiveChat: (Chat) -> Unit,
     onToggleLockChat: (Chat) -> Unit = {},
+    onClearChat: (Chat) -> Unit = {},
+    onDeleteChat: (Chat) -> Unit = {},
+    onLeaveGroup: (Chat) -> Unit = {},
+    onDeleteGroup: (Chat) -> Unit = {},
     onRequestUnlockChat: (Chat) -> Unit = { onChatClick(it.id) },
     onExploreContacts: () -> Unit,
     onCreateGroupClick: () -> Unit,
@@ -125,6 +138,10 @@ fun ChatsTab(
         discoverableProfiles.associateBy { it.uid }
     }
     var actionTargetChat by remember { mutableStateOf<Chat?>(null) }
+    var pendingDeleteChat by remember { mutableStateOf<Chat?>(null) }
+    var pendingClearChat by remember { mutableStateOf<Chat?>(null) }
+    var pendingLeaveGroup by remember { mutableStateOf<Chat?>(null) }
+    var pendingDeleteGroup by remember { mutableStateOf<Chat?>(null) }
     var showArchived by remember { mutableStateOf(false) }
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
@@ -179,11 +196,12 @@ fun ChatsTab(
 
             is UiState.Success -> {
                 val filteredAll = remember(chatsState.data, searchQuery, currentUserId) {
+                    val visible = chatsState.data.filter { !it.isHiddenFor(currentUserId) }
                     val matched = if (searchQuery.isBlank()) {
-                        chatsState.data
+                        visible
                     } else {
                         val q = searchQuery.trim().lowercase()
-                        chatsState.data.filter { chat ->
+                        visible.filter { chat ->
                             chat.peerName(currentUserId).lowercase().contains(q) ||
                                 chat.lastMessage.lowercase().contains(q)
                         }
@@ -433,12 +451,13 @@ fun ChatsTab(
         }
     }
 
-    // Long-press Chat Management Sheet (Pin / Mute / Archive / Lock)
+    // Long-press Chat Management Sheet (Pin / Mute / Lock / Archive / Clear / Delete / Leave / Delete Group)
     actionTargetChat?.let { target ->
         val pinned = target.isPinnedFor(currentUserId)
         val muted = target.isMutedFor(currentUserId)
         val archived = target.isArchivedFor(currentUserId)
         val locked = target.id in lockedChatIds
+        val canDeleteGroup = target.isGroup && (target.isAdmin(currentUserId) || target.participants == listOf(currentUserId))
 
         ModalBottomSheet(onDismissRequest = { actionTargetChat = null }) {
             Column(
@@ -489,9 +508,155 @@ fun ChatsTab(
                         actionTargetChat = null
                     }
                 )
+                HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
+                ChatFlagOptionRow(
+                    icon = Icons.Rounded.DeleteSweep,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    label = strings.clearChatAction,
+                    testTag = "chat_action_clear_history",
+                    onClick = {
+                        pendingClearChat = target
+                        actionTargetChat = null
+                    }
+                )
+                if (target.isGroup) {
+                    ChatFlagOptionRow(
+                        icon = Icons.AutoMirrored.Rounded.ExitToApp,
+                        tint = DangerRed,
+                        label = strings.leaveGroup,
+                        labelColor = DangerRed,
+                        testTag = "chat_action_leave_group",
+                        onClick = {
+                            pendingLeaveGroup = target
+                            actionTargetChat = null
+                        }
+                    )
+                    if (canDeleteGroup) {
+                        ChatFlagOptionRow(
+                            icon = Icons.Rounded.DeleteForever,
+                            tint = DangerRed,
+                            label = strings.deleteGroupAction,
+                            labelColor = DangerRed,
+                            testTag = "chat_action_delete_group",
+                            onClick = {
+                                pendingDeleteGroup = target
+                                actionTargetChat = null
+                            }
+                        )
+                    }
+                } else {
+                    ChatFlagOptionRow(
+                        icon = Icons.Rounded.Delete,
+                        tint = DangerRed,
+                        label = strings.deleteChatAction,
+                        labelColor = DangerRed,
+                        testTag = "chat_action_delete_chat",
+                        onClick = {
+                            pendingDeleteChat = target
+                            actionTargetChat = null
+                        }
+                    )
+                }
                 Spacer(modifier = Modifier.height(20.dp))
             }
         }
+    }
+
+    pendingClearChat?.let { target ->
+        AlertDialog(
+            onDismissRequest = { pendingClearChat = null },
+            title = { Text(strings.clearChatConfirmTitle, fontWeight = FontWeight.Bold) },
+            text = { Text(strings.clearChatConfirmMessage) },
+            confirmButton = {
+                Button(
+                    colors = ButtonDefaults.buttonColors(containerColor = DangerRed),
+                    onClick = {
+                        onClearChat(target)
+                        pendingClearChat = null
+                    }
+                ) {
+                    Text(strings.confirm)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingClearChat = null }) {
+                    Text(strings.cancel)
+                }
+            }
+        )
+    }
+
+    pendingDeleteChat?.let { target ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteChat = null },
+            title = { Text(strings.deleteChatConfirmTitle, fontWeight = FontWeight.Bold) },
+            text = { Text(strings.deleteChatConfirmMessage) },
+            confirmButton = {
+                Button(
+                    colors = ButtonDefaults.buttonColors(containerColor = DangerRed),
+                    onClick = {
+                        onDeleteChat(target)
+                        pendingDeleteChat = null
+                    },
+                    modifier = Modifier.testTag("confirm_delete_chat_button")
+                ) {
+                    Text(strings.deleteChatAction)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteChat = null }) {
+                    Text(strings.cancel)
+                }
+            }
+        )
+    }
+
+    pendingLeaveGroup?.let { target ->
+        AlertDialog(
+            onDismissRequest = { pendingLeaveGroup = null },
+            title = { Text(strings.leaveGroupConfirmTitle, fontWeight = FontWeight.Bold) },
+            text = { Text(strings.leaveGroupConfirmMessage) },
+            confirmButton = {
+                Button(
+                    colors = ButtonDefaults.buttonColors(containerColor = DangerRed),
+                    onClick = {
+                        onLeaveGroup(target)
+                        pendingLeaveGroup = null
+                    }
+                ) {
+                    Text(strings.leaveGroup)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingLeaveGroup = null }) {
+                    Text(strings.cancel)
+                }
+            }
+        )
+    }
+
+    pendingDeleteGroup?.let { target ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteGroup = null },
+            title = { Text(strings.deleteGroupConfirmTitle, fontWeight = FontWeight.Bold) },
+            text = { Text(strings.deleteGroupConfirmMessage) },
+            confirmButton = {
+                Button(
+                    colors = ButtonDefaults.buttonColors(containerColor = DangerRed),
+                    onClick = {
+                        onDeleteGroup(target)
+                        pendingDeleteGroup = null
+                    }
+                ) {
+                    Text(strings.deleteGroupAction)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteGroup = null }) {
+                    Text(strings.cancel)
+                }
+            }
+        )
     }
 }
 
@@ -500,6 +665,8 @@ private fun ChatFlagOptionRow(
     icon: ImageVector,
     tint: Color,
     label: String,
+    labelColor: Color = MaterialTheme.colorScheme.onSurface,
+    testTag: String? = null,
     onClick: () -> Unit
 ) {
     Row(
@@ -507,12 +674,13 @@ private fun ChatFlagOptionRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 14.dp),
+            .padding(horizontal = 12.dp, vertical = 14.dp)
+            .let { if (testTag != null) it.testTag(testTag) else it },
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(icon, contentDescription = null, tint = tint)
         Spacer(modifier = Modifier.width(14.dp))
-        Text(text = label, style = MaterialTheme.typography.bodyLarge)
+        Text(text = label, style = MaterialTheme.typography.bodyLarge, color = labelColor)
     }
 }
 
@@ -726,55 +894,71 @@ private fun ConversationRow(
                         modifier = Modifier.weight(1f),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        when (chat.lastMessageType) {
-                            "image" -> {
-                                Icon(
-                                    imageVector = Icons.Rounded.Photo,
-                                    contentDescription = null,
-                                    tint = BrandBlue,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                            }
-                            "document" -> {
-                                Icon(
-                                    imageVector = Icons.Rounded.AttachFile,
-                                    contentDescription = null,
-                                    tint = BrandPurple,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                            }
-                            "audio" -> {
-                                Icon(
-                                    imageVector = Icons.Rounded.Mic,
-                                    contentDescription = null,
-                                    tint = OnlineGreen,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                            }
-                            "poll" -> {
-                                Icon(
-                                    imageVector = Icons.Rounded.Poll,
-                                    contentDescription = null,
-                                    tint = BrandPurple,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                            }
-                            "call" -> {
-                                Icon(
-                                    imageVector = Icons.Rounded.Call,
-                                    contentDescription = null,
-                                    tint = OnlineGreen,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
+                        val clearedMs = chat.clearedAtMillisFor(currentUserId)
+                        val lastMsgMs = chat.lastMessageTime?.toDate()?.time ?: 0L
+                        val isPreviewCleared = clearedMs > 0L && lastMsgMs <= clearedMs
+
+                        if (!isPreviewCleared) {
+                            when (chat.lastMessageType) {
+                                "image" -> {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Photo,
+                                        contentDescription = null,
+                                        tint = BrandBlue,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                }
+                                "document" -> {
+                                    Icon(
+                                        imageVector = Icons.Rounded.AttachFile,
+                                        contentDescription = null,
+                                        tint = BrandPurple,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                }
+                                "audio" -> {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Mic,
+                                        contentDescription = null,
+                                        tint = OnlineGreen,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                }
+                                "poll" -> {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Poll,
+                                        contentDescription = null,
+                                        tint = BrandPurple,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                }
+                                "call" -> {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Call,
+                                        contentDescription = null,
+                                        tint = OnlineGreen,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                }
+                                "system" -> {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Info,
+                                        contentDescription = null,
+                                        tint = BrandBlue,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                }
                             }
                         }
 
                         val previewText = when {
+                            isPreviewCleared -> strings.chatStarted
                             chat.lastMessageType == "image" && (chat.lastMessage.isBlank() || chat.lastMessage == "📷") ->
                                 strings.photoMessagePreview
                             chat.lastMessageType == "document" && chat.lastMessage == "📎" ->

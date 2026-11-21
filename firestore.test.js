@@ -1289,3 +1289,229 @@ test("v1.7 Admin Broadcast, Verified Badge isolation, and Auto-Moderation config
     })
   );
 });
+
+test("v1.8 Group management, system events, admin moderation, deletion, and per-user clear/delete chat", async () => {
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID).firestore();
+  const charlieDb = testEnv.authenticatedContext(CHARLIE_UID).firestore();
+  const now = pastDate(5000);
+  const groupId = "group_v18_full_test";
+
+  // 1. Create group with groupDescription & hiddenBy
+  await assertSucceeds(
+    aliceDb.collection("chats").doc(groupId).set({
+      participants: [ALICE_UID, BOB_UID],
+      participantNames: { [ALICE_UID]: "Alice", [BOB_UID]: "Bob" },
+      participantPhotos: { [ALICE_UID]: "", [BOB_UID]: "" },
+      isGroup: true,
+      groupName: "বাংলা চ্যাট টিম",
+      groupDescription: "অফিশিয়াল আলোচনা গ্রুপ",
+      groupPhotoUrl: "",
+      adminUids: [ALICE_UID],
+      onlyAdminsCanSend: false,
+      hiddenBy: [],
+      lastMessage: "Alice গ্রুপ তৈরি করেছেন",
+      lastMessageType: "system",
+      lastSenderId: ALICE_UID,
+      lastMessageTime: now,
+      unreadCounts: { [ALICE_UID]: 0, [BOB_UID]: 0 },
+      typingUids: [],
+      createdBy: ALICE_UID,
+      createdAt: now,
+      updatedAt: now,
+    })
+  );
+
+  // 2. Initial message by Bob before Charlie joins
+  await assertSucceeds(
+    bobDb.collection("chats").doc(groupId).collection("messages").doc("bob_old_msg").set({
+      chatId: groupId,
+      senderId: BOB_UID,
+      senderName: "Bob",
+      participants: [ALICE_UID, BOB_UID],
+      text: "পুরনো মেসেজ",
+      type: "text",
+      delivered: true,
+      read: false,
+      deleted: false,
+      timestamp: pastDate(4500),
+      updatedAt: pastDate(4500),
+    })
+  );
+
+  // Outsider Charlie cannot read messages before joining
+  await assertFails(
+    charlieDb.collection("chats").doc(groupId).collection("messages").orderBy("timestamp", "desc").limit(50).get()
+  );
+
+  // 3. Admin Alice updates groupDescription & groupPhotoUrl; non-admin Bob is denied
+  await assertSucceeds(
+    aliceDb.collection("chats").doc(groupId).update({
+      groupDescription: "আপডেটেড গ্রুপ বিবরণ",
+      groupPhotoUrl: "https://res.cloudinary.com/demo/image/upload/v1/group.jpg",
+      updatedAt: pastDate(4000),
+    })
+  );
+  await assertFails(
+    bobDb.collection("chats").doc(groupId).update({
+      groupDescription: "Bob hijack description",
+      updatedAt: pastDate(3900),
+    })
+  );
+
+  // 4. Non-admin Bob is denied pinning message or changing disappearing timer in group; Admin Alice succeeds
+  await assertFails(
+    bobDb.collection("chats").doc(groupId).update({
+      pinnedMessageId: "bob_old_msg",
+      pinnedMessageText: "পুরনো মেসেজ",
+      pinnedMessageSender: "Bob",
+      updatedAt: pastDate(3800),
+    })
+  );
+  await assertSucceeds(
+    aliceDb.collection("chats").doc(groupId).update({
+      pinnedMessageId: "bob_old_msg",
+      pinnedMessageText: "পুরনো মেসেজ",
+      pinnedMessageSender: "Bob",
+      updatedAt: pastDate(3750),
+    })
+  );
+  await assertFails(
+    bobDb.collection("chats").doc(groupId).update({
+      disappearingHours: 24,
+      updatedAt: pastDate(3700),
+    })
+  );
+  await assertSucceeds(
+    aliceDb.collection("chats").doc(groupId).update({
+      disappearingHours: 24,
+      updatedAt: pastDate(3650),
+    })
+  );
+
+  // 5. Admin Alice adds Charlie -> Charlie can immediately read older messages with orderBy("timestamp", "desc")
+  await assertSucceeds(
+    aliceDb.collection("chats").doc(groupId).update({
+      participants: [ALICE_UID, BOB_UID, CHARLIE_UID],
+      participantNames: { [ALICE_UID]: "Alice", [BOB_UID]: "Bob", [CHARLIE_UID]: "Charlie" },
+      participantPhotos: { [ALICE_UID]: "", [BOB_UID]: "", [CHARLIE_UID]: "" },
+      unreadCounts: { [ALICE_UID]: 0, [BOB_UID]: 0, [CHARLIE_UID]: 0 },
+      updatedAt: pastDate(3500),
+    })
+  );
+  await assertSucceeds(
+    charlieDb.collection("chats").doc(groupId).collection("messages").orderBy("timestamp", "desc").limit(50).get()
+  );
+
+  // 6. System event message allowed even when onlyAdminsCanSend == true
+  await assertSucceeds(
+    aliceDb.collection("chats").doc(groupId).update({
+      onlyAdminsCanSend: true,
+      updatedAt: pastDate(3400),
+    })
+  );
+  await assertSucceeds(
+    charlieDb.collection("chats").doc(groupId).collection("messages").doc("sys_leave_event").set({
+      chatId: groupId,
+      senderId: CHARLIE_UID,
+      senderName: "Charlie",
+      participants: [ALICE_UID, BOB_UID, CHARLIE_UID],
+      text: "Charlie গ্রুপ ত্যাগ করেছেন",
+      type: "system",
+      delivered: true,
+      read: true,
+      deleted: false,
+      timestamp: pastDate(3300),
+      updatedAt: pastDate(3300),
+    })
+  );
+
+  // 7. Group Admin Alice can soft-delete Bob's message for everyone; non-admin Charlie cannot
+  await assertFails(
+    charlieDb.collection("chats").doc(groupId).collection("messages").doc("bob_old_msg").update({
+      deleted: true,
+      text: "",
+      updatedAt: pastDate(3200),
+    })
+  );
+  await assertSucceeds(
+    aliceDb.collection("chats").doc(groupId).collection("messages").doc("bob_old_msg").update({
+      deleted: true,
+      text: "",
+      updatedAt: pastDate(3100),
+    })
+  );
+
+  // 8. Admin Alice removes Charlie -> Charlie immediately loses read access to messages
+  await assertSucceeds(
+    aliceDb.collection("chats").doc(groupId).update({
+      participants: [ALICE_UID, BOB_UID],
+      adminUids: [ALICE_UID],
+      participantNames: { [ALICE_UID]: "Alice", [BOB_UID]: "Bob" },
+      participantPhotos: { [ALICE_UID]: "", [BOB_UID]: "" },
+      unreadCounts: { [ALICE_UID]: 0, [BOB_UID]: 0 },
+      updatedAt: pastDate(3000),
+    })
+  );
+  await assertFails(
+    charlieDb.collection("chats").doc(groupId).collection("messages").orderBy("timestamp", "desc").limit(50).get()
+  );
+
+  // 9. Non-admin Bob CANNOT delete another member's message or the group; Admin Alice CAN delete all messages + entire group
+  await assertFails(bobDb.collection("chats").doc(groupId).collection("messages").doc("sys_leave_event").delete());
+  await assertFails(bobDb.collection("chats").doc(groupId).delete());
+  await assertSucceeds(aliceDb.collection("chats").doc(groupId).collection("messages").doc("bob_old_msg").delete());
+  await assertSucceeds(aliceDb.collection("chats").doc(groupId).collection("messages").doc("sys_leave_event").delete());
+  await assertSucceeds(aliceDb.collection("chats").doc(groupId).delete());
+
+  // 10. Per-user Clear Chat History & Delete Chat (hiddenBy + clearedAt) on 1-on-1 chat
+  await assertSucceeds(aliceDb.collection("chats").doc(CHAT_AB).set(validChat({ hiddenBy: [] })));
+
+  // Alice clears history & deletes chat for herself only
+  const clearTs = pastDate(2000);
+  await assertSucceeds(
+    aliceDb.collection("chats").doc(CHAT_AB).update({
+      hiddenBy: [ALICE_UID],
+      clearedAt: { [ALICE_UID]: clearTs },
+      pinnedBy: [],
+      archivedBy: [],
+      unreadCounts: { [ALICE_UID]: 0, [BOB_UID]: 1 },
+      updatedAt: clearTs,
+    })
+  );
+
+  // Bob CANNOT tamper with Alice's clearedAt entry
+  await assertFails(
+    bobDb.collection("chats").doc(CHAT_AB).update({
+      clearedAt: { [ALICE_UID]: pastDate(500), [BOB_UID]: pastDate(500) },
+      updatedAt: pastDate(500),
+    })
+  );
+
+  // Bob CAN set his own clearedAt while preserving Alice's entry
+  await assertSucceeds(
+    bobDb.collection("chats").doc(CHAT_AB).update({
+      clearedAt: { [ALICE_UID]: clearTs, [BOB_UID]: pastDate(1000) },
+      updatedAt: pastDate(1000),
+    })
+  );
+
+  // Sending a new message resets hiddenBy to [] so chat reappears in Home list
+  await assertSucceeds(
+    bobDb.collection("chats").doc(CHAT_AB).update({
+      lastMessage: "আবার কথা বলি!",
+      lastMessageType: "text",
+      lastSenderId: BOB_UID,
+      lastMessageTime: pastDate(500),
+      lastMessageDelivered: false,
+      lastMessageRead: false,
+      unreadCounts: { [ALICE_UID]: 1, [BOB_UID]: 0 },
+      typingUids: [],
+      hiddenBy: [],
+      participantNames: { [ALICE_UID]: "Tania Rahman", [BOB_UID]: "Riyad Hasan" },
+      participantPhotos: { [ALICE_UID]: "", [BOB_UID]: "" },
+      updatedAt: pastDate(500),
+    })
+  );
+});
+

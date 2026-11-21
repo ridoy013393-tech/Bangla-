@@ -173,6 +173,7 @@ data class Chat(
     val participantPhotos: Map<String, String> = emptyMap(),
     val isGroup: Boolean = false,
     val groupName: String = "",
+    val groupDescription: String = "",
     val groupPhotoUrl: String = "",
     val adminUids: List<String> = emptyList(),
     val onlyAdminsCanSend: Boolean = false,
@@ -191,6 +192,8 @@ data class Chat(
     val mutedBy: List<String> = emptyList(),
     val pinnedBy: List<String> = emptyList(),
     val archivedBy: List<String> = emptyList(),
+    val hiddenBy: List<String> = emptyList(),
+    val clearedAt: Map<String, Timestamp> = emptyMap(),
     val createdBy: String = "",
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
@@ -210,7 +213,11 @@ data class Chat(
         return participantPhotos[other].orEmpty()
     }
 
+    fun isCreator(uid: String): Boolean = isGroup && createdBy == uid
+
     fun isAdmin(uid: String): Boolean = isGroup && (uid in adminUids || createdBy == uid)
+
+    fun isAtMemberLimit(): Boolean = participants.size >= MAX_GROUP_MEMBERS
 
     fun unreadFor(currentUid: String): Int =
         (unreadCounts[currentUid] ?: 0L).toInt().coerceAtLeast(0)
@@ -218,6 +225,12 @@ data class Chat(
     fun isPinnedFor(uid: String): Boolean = uid in pinnedBy
     fun isMutedFor(uid: String): Boolean = uid in mutedBy
     fun isArchivedFor(uid: String): Boolean = uid in archivedBy
+    fun isHiddenFor(uid: String): Boolean = uid in hiddenBy
+    fun clearedAtMillisFor(uid: String): Long = clearedAt[uid]?.toDate()?.time ?: 0L
+
+    companion object {
+        const val MAX_GROUP_MEMBERS = 50
+    }
 }
 
 @Keep

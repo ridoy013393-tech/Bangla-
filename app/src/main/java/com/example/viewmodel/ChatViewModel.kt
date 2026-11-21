@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -58,6 +59,9 @@ class ChatViewModel(
 
     private val _uploadState = MutableStateFlow<UploadState>(UploadState.Idle)
     val uploadState: StateFlow<UploadState> = _uploadState.asStateFlow()
+
+    private val _groupPhotoUploading = MutableStateFlow(false)
+    val groupPhotoUploading: StateFlow<Boolean> = _groupPhotoUploading.asStateFlow()
 
     private val _snackbarEvents = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val snackbarEvents = _snackbarEvents.asSharedFlow()
@@ -120,8 +124,8 @@ class ChatViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), ModerationSettings())
 
-    val messagesState: StateFlow<UiState<List<ChatMessage>>> = _pageLimit
-        .flatMapLatest { limit ->
+    val messagesState: StateFlow<UiState<List<ChatMessage>>> = combine(
+        _pageLimit.flatMapLatest { limit ->
             repository.observeMessages(chatId, currentUserId, limit)
                 .map<List<ChatMessage>, UiState<List<ChatMessage>>> { UiState.Success(it) }
                 .catch { error ->
@@ -131,8 +135,20 @@ class ChatViewModel(
                     Log.w(TAG, "Messages stream error", actual)
                     emit(UiState.Error(actual.localizedMessage ?: "Failed to load messages"))
                 }
+        },
+        chat
+    ) { state, currentChat ->
+        val clearedMs = currentChat?.clearedAtMillisFor(currentUserId) ?: 0L
+        if (state is UiState.Success && clearedMs > 0L) {
+            val visible = state.data.filter { msg ->
+                val msgMs = msg.timestamp?.toDate()?.time ?: Long.MAX_VALUE
+                msgMs > clearedMs
+            }
+            UiState.Success(visible)
+        } else {
+            state
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), UiState.Loading)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), UiState.Loading)
 
     fun loadOlderMessages() {
         _pageLimit.value = (_pageLimit.value + 50L).coerceAtMost(500L)
@@ -518,52 +534,122 @@ class ChatViewModel(
         }
     }
 
-    fun renameGroup(newName: String) {
+    suspend fun lookupUserByExactUsername(rawQuery: String): Result<PublicProfile?> =
+        repository.findProfileByExactUsername(rawQuery, currentUserId)
+
+    fun renameGroup(actorProfile: PublicProfile?, newName: String, successToast: String = "") {
+        val currentChat = chat.value ?: return
         viewModelScope.launch {
-            repository.renameGroup(chatId, newName)
+            repository.renameGroup(currentChat, actorProfile, newName)
+                .onSuccess { if (successToast.isNotBlank()) _snackbarEvents.tryEmit(successToast) }
                 .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Rename failed") }
         }
     }
 
-    fun addGroupMembers(members: List<PublicProfile>) {
+    fun updateGroupDescription(actorProfile: PublicProfile?, description: String, successToast: String = "") {
         val currentChat = chat.value ?: return
         viewModelScope.launch {
-            repository.addGroupMembers(currentChat, members)
+            repository.updateGroupDescription(currentChat, actorProfile, description)
+                .onSuccess { if (successToast.isNotBlank()) _snackbarEvents.tryEmit(successToast) }
+                .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Failed to update description") }
+        }
+    }
+
+    fun uploadAndUpdateGroupPhoto(actorProfile: PublicProfile?, uri: Uri, successToast: String) {
+        val currentChat = chat.value ?: return
+        viewModelScope.launch {
+            _groupPhotoUploading.value = true
+            storageRepository.uploadGroupPhoto(currentUserId, uri) {}
+                .onSuccess { uploaded ->
+                    repository.updateGroupPhoto(currentChat, actorProfile, uploaded.downloadUrl)
+                        .onSuccess { _snackbarEvents.tryEmit(successToast) }
+                        .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Failed to save group photo") }
+                }
+                .onFailure { err ->
+                    _snackbarEvents.tryEmit(err.localizedMessage ?: "Group photo upload failed")
+                }
+            _groupPhotoUploading.value = false
+        }
+    }
+
+    fun addGroupMembers(
+        actorProfile: PublicProfile?,
+        members: List<PublicProfile>,
+        successToast: String = ""
+    ) {
+        val currentChat = chat.value ?: return
+        viewModelScope.launch {
+            repository.addGroupMembers(currentChat, actorProfile, members)
+                .onSuccess { if (successToast.isNotBlank()) _snackbarEvents.tryEmit(successToast) }
                 .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Failed to add members") }
         }
     }
 
-    fun leaveGroup(onLeft: () -> Unit) {
+    fun leaveGroup(actorProfile: PublicProfile?, onLeft: () -> Unit) {
         val currentChat = chat.value ?: return
         viewModelScope.launch {
-            repository.leaveGroup(currentChat, currentUserId)
+            repository.leaveGroup(currentChat, currentUserId, actorProfile)
                 .onSuccess { onLeft() }
                 .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Failed to leave group") }
         }
     }
 
-    fun toggleGroupOnlyAdminsCanSend(onlyAdmins: Boolean) {
+    fun deleteGroup(successToast: String, onDeleted: () -> Unit) {
+        val currentChat = chat.value ?: return
         viewModelScope.launch {
-            repository.toggleGroupOnlyAdminsCanSend(chatId, onlyAdmins)
+            repository.deleteGroupChat(currentChat)
+                .onSuccess {
+                    if (successToast.isNotBlank()) _snackbarEvents.tryEmit(successToast)
+                    onDeleted()
+                }
+                .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Failed to delete group") }
+        }
+    }
+
+    fun toggleGroupOnlyAdminsCanSend(actorProfile: PublicProfile?, onlyAdmins: Boolean) {
+        val currentChat = chat.value ?: return
+        viewModelScope.launch {
+            repository.toggleGroupOnlyAdminsCanSend(currentChat, actorProfile, onlyAdmins)
                 .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Failed to update group setting") }
         }
     }
 
-    fun toggleGroupMemberAdmin(targetUid: String, toastMessage: String) {
+    fun toggleGroupMemberAdmin(actorProfile: PublicProfile?, targetUid: String, toastMessage: String) {
         val currentChat = chat.value ?: return
         viewModelScope.launch {
-            repository.toggleGroupMemberAdmin(currentChat, targetUid)
+            repository.toggleGroupMemberAdmin(currentChat, actorProfile, targetUid)
                 .onSuccess { _snackbarEvents.tryEmit(toastMessage) }
                 .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Failed to update admin role") }
         }
     }
 
-    fun removeGroupMember(targetUid: String, toastMessage: String) {
+    fun removeGroupMember(actorProfile: PublicProfile?, targetUid: String, toastMessage: String) {
         val currentChat = chat.value ?: return
         viewModelScope.launch {
-            repository.removeGroupMember(currentChat, targetUid)
+            repository.removeGroupMember(currentChat, actorProfile, targetUid)
                 .onSuccess { _snackbarEvents.tryEmit(toastMessage) }
                 .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Failed to remove member") }
+        }
+    }
+
+    fun clearChatForMe(successToast: String) {
+        val currentChat = chat.value ?: return
+        viewModelScope.launch {
+            repository.clearChatForMe(currentChat, currentUserId)
+                .onSuccess { _snackbarEvents.tryEmit(successToast) }
+                .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Failed to clear chat") }
+        }
+    }
+
+    fun deleteChatForMe(successToast: String, onDeleted: () -> Unit) {
+        val currentChat = chat.value ?: return
+        viewModelScope.launch {
+            repository.deleteChatForMe(currentChat, currentUserId)
+                .onSuccess {
+                    if (successToast.isNotBlank()) _snackbarEvents.tryEmit(successToast)
+                    onDeleted()
+                }
+                .onFailure { _snackbarEvents.tryEmit(it.localizedMessage ?: "Failed to delete chat") }
         }
     }
 
@@ -586,7 +672,7 @@ class ChatViewModel(
     fun generateQuickReplies(messages: List<ChatMessage>, language: AppLanguage) {
         val currentChat = chat.value ?: return
         val recentText = messages
-            .filter { !it.deleted && it.type != "call" && it.text.isNotBlank() }
+            .filter { !it.deleted && it.type != "call" && it.type != "system" && it.text.isNotBlank() }
             .takeLast(8)
             .map { msg ->
                 val name = if (msg.senderId == currentUserId) "Me"
@@ -613,7 +699,7 @@ class ChatViewModel(
     fun summarizeConversation(messages: List<ChatMessage>, language: AppLanguage) {
         val currentChat = chat.value ?: return
         val recentText = messages
-            .filter { !it.deleted && it.type != "call" && it.text.isNotBlank() }
+            .filter { !it.deleted && it.type != "call" && it.type != "system" && it.text.isNotBlank() }
             .takeLast(30)
             .map { msg ->
                 val name = if (msg.senderId == currentUserId) "Me"

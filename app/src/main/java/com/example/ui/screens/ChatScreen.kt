@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -44,6 +45,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.CallMade
 import androidx.compose.material.icons.automirrored.rounded.CallMissed
 import androidx.compose.material.icons.automirrored.rounded.CallReceived
+import androidx.compose.material.icons.automirrored.rounded.ExitToApp
 import androidx.compose.material.icons.automirrored.rounded.Forward
 import androidx.compose.material.icons.automirrored.rounded.Reply
 import androidx.compose.material.icons.automirrored.rounded.Send
@@ -59,7 +61,9 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Done
 import androidx.compose.material.icons.rounded.DoneAll
@@ -67,6 +71,7 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.Group
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.LooksOne
 import androidx.compose.material.icons.rounded.Mic
@@ -88,6 +93,8 @@ import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.WifiOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -127,6 +134,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -183,7 +191,8 @@ fun ChatScreen(
     onStartVideoCall: (PublicProfile) -> Unit,
     onBlockPeer: (PublicProfile) -> Unit,
     onUnblockPeer: (String) -> Unit,
-    onReportPeer: (String, String, String) -> Unit
+    onReportPeer: (String, String, String) -> Unit,
+    onOpenDirectChatWithMember: (PublicProfile) -> Unit = {}
 ) {
     BackHandler(onBack = onBack)
 
@@ -209,6 +218,7 @@ fun ChatScreen(
     val writerState by viewModel.writerState.collectAsStateWithLifecycle()
     val explainState by viewModel.explainState.collectAsStateWithLifecycle()
     val explainSourceText by viewModel.explainSourceText.collectAsStateWithLifecycle()
+    val isGroupPhotoUploading by viewModel.groupPhotoUploading.collectAsStateWithLifecycle()
 
     val voiceRecorder = remember(context) { VoiceNoteRecorder(context) }
     val voicePlayer = remember { VoiceNotePlayer() }
@@ -240,6 +250,10 @@ fun ChatScreen(
     var showAiExplainSheet by remember { mutableStateOf(false) }
     var showCreatePollDialog by remember { mutableStateOf(false) }
     var showSharedMediaSheet by remember { mutableStateOf(false) }
+    var showClearChatConfirm by remember { mutableStateOf(false) }
+    var showDeleteChatConfirm by remember { mutableStateOf(false) }
+    var showLeaveGroupConfirm by remember { mutableStateOf(false) }
+    var showDeleteGroupConfirm by remember { mutableStateOf(false) }
     var activeViewOnceMessage by remember { mutableStateOf<ChatMessage?>(null) }
     var inChatSearchOpen by remember { mutableStateOf(false) }
     var inChatSearchQuery by remember { mutableStateOf("") }
@@ -250,6 +264,23 @@ fun ChatScreen(
         name = "Bangla Chat User"
     )
     val isGroupChat = chat?.isGroup == true
+    val isGroupAdmin = isGroupChat && chat?.isAdmin(viewModel.currentUserId) == true
+    val canDeleteGroup = isGroupChat && (isGroupAdmin || chat?.participants == listOf(viewModel.currentUserId))
+    var wasLoadedGroup by remember(viewModel.chatId) { mutableStateOf(false) }
+    var selfExitedGroup by remember(viewModel.chatId) { mutableStateOf(false) }
+
+    LaunchedEffect(chat, viewModel.currentUserId) {
+        val current = chat
+        if (current != null && current.isGroup && viewModel.currentUserId in current.participants) {
+            wasLoadedGroup = true
+        } else if (wasLoadedGroup && !selfExitedGroup &&
+            (current == null || viewModel.currentUserId !in current.participants)
+        ) {
+            Toast.makeText(context, strings.groupRemovedOrDeletedToast, Toast.LENGTH_SHORT).show()
+            onBack()
+        }
+    }
+
     val peerUid = chat?.peerUid(viewModel.currentUserId).orEmpty()
     val peerName = if (isGroupChat) {
         chat?.groupName?.ifBlank { strings.newGroup } ?: strings.newGroup
@@ -589,14 +620,16 @@ fun ChatScreen(
                                         showStarredSheet = true
                                     }
                                 )
-                                DropdownMenuItem(
-                                    text = { Text(strings.disappearingMessages) },
-                                    leadingIcon = { Icon(Icons.Rounded.Timer, contentDescription = null, tint = BrandPurple) },
-                                    onClick = {
-                                        showMenu = false
-                                        showDisappearingDialog = true
-                                    }
-                                )
+                                if (!isGroupChat || isGroupAdmin) {
+                                    DropdownMenuItem(
+                                        text = { Text(strings.disappearingMessages) },
+                                        leadingIcon = { Icon(Icons.Rounded.Timer, contentDescription = null, tint = BrandPurple) },
+                                        onClick = {
+                                            showMenu = false
+                                            showDisappearingDialog = true
+                                        }
+                                    )
+                                }
                                 DropdownMenuItem(
                                     text = { Text(strings.exportChatAction) },
                                     leadingIcon = { Icon(Icons.Rounded.Download, contentDescription = null, tint = OnlineGreen) },
@@ -612,6 +645,48 @@ fun ChatScreen(
                                         )
                                     }
                                 )
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text(strings.clearChatAction) },
+                                    leadingIcon = { Icon(Icons.Rounded.DeleteSweep, contentDescription = null) },
+                                    onClick = {
+                                        showMenu = false
+                                        showClearChatConfirm = true
+                                    }
+                                )
+                                if (!isGroupChat) {
+                                    DropdownMenuItem(
+                                        text = { Text(strings.deleteChatAction, color = DangerRed) },
+                                        leadingIcon = { Icon(Icons.Rounded.DeleteOutline, contentDescription = null, tint = DangerRed) },
+                                        onClick = {
+                                            showMenu = false
+                                            showDeleteChatConfirm = true
+                                        }
+                                    )
+                                } else {
+                                    DropdownMenuItem(
+                                        text = { Text(strings.leaveGroup, color = DangerRed) },
+                                        leadingIcon = {
+                                            Icon(Icons.AutoMirrored.Rounded.ExitToApp, contentDescription = null, tint = DangerRed)
+                                        },
+                                        onClick = {
+                                            showMenu = false
+                                            showLeaveGroupConfirm = true
+                                        }
+                                    )
+                                    if (canDeleteGroup) {
+                                        DropdownMenuItem(
+                                            text = { Text(strings.deleteGroupAction, color = DangerRed) },
+                                            leadingIcon = {
+                                                Icon(Icons.Rounded.DeleteForever, contentDescription = null, tint = DangerRed)
+                                            },
+                                            onClick = {
+                                                showMenu = false
+                                                showDeleteGroupConfirm = true
+                                            }
+                                        )
+                                    }
+                                }
                                 if (!isGroupChat && peerUid.isNotBlank()) {
                                     HorizontalDivider()
                                     DropdownMenuItem(
@@ -745,15 +820,17 @@ fun ChatScreen(
                                         overflow = TextOverflow.Ellipsis
                                     )
                                 }
-                                IconButton(
-                                    onClick = { viewModel.unpinMessage() },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Close,
-                                        contentDescription = strings.unpinMessage,
-                                        modifier = Modifier.size(16.dp)
-                                    )
+                                if (!isGroupChat || isGroupAdmin) {
+                                    IconButton(
+                                        onClick = { viewModel.unpinMessage() },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Close,
+                                            contentDescription = strings.unpinMessage,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -766,7 +843,7 @@ fun ChatScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(BrandPurple.copy(alpha = 0.12f))
-                                .clickable { showDisappearingDialog = true }
+                                .clickable(enabled = !isGroupChat || isGroupAdmin) { showDisappearingDialog = true }
                                 .padding(horizontal = 14.dp, vertical = 5.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.Center
@@ -1328,6 +1405,7 @@ fun ChatScreen(
                             } else ""
                             val canSwipeReply = !msg.deleted &&
                                 msg.type != "call" &&
+                                msg.type != "system" &&
                                 !isPeerBlocked &&
                                 !(isGroupChat && chat?.onlyAdminsCanSend == true && chat?.isAdmin(viewModel.currentUserId) != true)
 
@@ -1369,7 +1447,7 @@ fun ChatScreen(
                                             else onStartVoiceCall(targetPeer)
                                         }
                                     },
-                                    onLongClick = { selectedMessage = msg },
+                                    onLongClick = { if (msg.type != "system") selectedMessage = msg },
                                     onImageClick = { url -> fullscreenImageUrl = url },
                                     onDocumentClick = { url ->
                                         try {
@@ -1476,7 +1554,7 @@ fun ChatScreen(
 
     // Long-press Message Action Sheet (React, Reply, Copy, Forward, Delete for Me / Everyone)
     selectedMessage?.let { msg ->
-        val isRegularActiveMessage = !msg.deleted && msg.type != "call"
+        val isRegularActiveMessage = !msg.deleted && msg.type != "call" && msg.type != "system"
         ModalBottomSheet(onDismissRequest = { selectedMessage = null }) {
             Column(
                 modifier = Modifier
@@ -1573,23 +1651,29 @@ fun ChatScreen(
                             selectedMessage = null
                         }
                     )
-                    val isCurrentlyPinned = chat?.pinnedMessageId == msg.id
-                    AttachOptionRow(
-                        icon = Icons.Rounded.PushPin,
-                        tint = BrandBlue,
-                        label = if (isCurrentlyPinned) strings.unpinMessage else strings.pinMessage,
-                        onClick = {
-                            if (isCurrentlyPinned) {
-                                viewModel.unpinMessage()
-                            } else {
-                                val senderLabel = if (msg.senderId == viewModel.currentUserId) {
-                                    effectiveMyProfile.name
-                                } else peerName
-                                viewModel.pinMessage(msg, senderLabel)
+                    if (!isGroupChat || isGroupAdmin) {
+                        val isCurrentlyPinned = chat?.pinnedMessageId == msg.id
+                        AttachOptionRow(
+                            icon = Icons.Rounded.PushPin,
+                            tint = BrandBlue,
+                            label = if (isCurrentlyPinned) strings.unpinMessage else strings.pinMessage,
+                            onClick = {
+                                if (isCurrentlyPinned) {
+                                    viewModel.unpinMessage()
+                                } else {
+                                    val senderLabel = if (msg.senderId == viewModel.currentUserId) {
+                                        effectiveMyProfile.name
+                                    } else {
+                                        msg.senderName.ifBlank {
+                                            chat?.participantNames?.get(msg.senderId).orEmpty().ifBlank { peerName }
+                                        }
+                                    }
+                                    viewModel.pinMessage(msg, senderLabel)
+                                }
+                                selectedMessage = null
                             }
-                            selectedMessage = null
-                        }
-                    )
+                        )
+                    }
                     if (msg.senderId == viewModel.currentUserId && msg.type == "text" && msg.text.isNotBlank()) {
                         AttachOptionRow(
                             icon = Icons.Rounded.Edit,
@@ -1673,12 +1757,17 @@ fun ChatScreen(
                     }
                 )
 
-                // Delete for Everyone — available for own non-deleted non-call messages
-                if (msg.senderId == viewModel.currentUserId && !msg.deleted && msg.type != "call") {
+                // Delete for Everyone — available for own messages OR by Group Admin for any member's message
+                if ((msg.senderId == viewModel.currentUserId || isGroupAdmin) &&
+                    !msg.deleted &&
+                    msg.type != "call" &&
+                    msg.type != "system"
+                ) {
                     AttachOptionRow(
                         icon = Icons.Rounded.Delete,
                         tint = DangerRed,
-                        label = strings.deleteForEveryone,
+                        label = if (msg.senderId == viewModel.currentUserId) strings.deleteForEveryone
+                        else strings.groupAdminDeleteMessage,
                         testTag = "delete_for_everyone_action",
                         onClick = {
                             viewModel.deleteOwnMessage(msg)
@@ -1848,18 +1937,165 @@ fun ChatScreen(
             chat = currentGroupChat,
             currentUserId = viewModel.currentUserId,
             discoverableContacts = discoverableContacts,
-            onRenameGroup = { newName -> viewModel.renameGroup(newName) },
-            onAddMembers = { newMembers -> viewModel.addGroupMembers(newMembers) },
-            onToggleOnlyAdminsCanSend = { onlyAdmins -> viewModel.toggleGroupOnlyAdminsCanSend(onlyAdmins) },
+            isUploadingPhoto = isGroupPhotoUploading,
+            onLookupUsername = { query -> viewModel.lookupUserByExactUsername(query) },
+            onRenameGroup = { newName ->
+                viewModel.renameGroup(effectiveMyProfile, newName, strings.groupRenamedToast)
+            },
+            onUpdateDescription = { desc ->
+                viewModel.updateGroupDescription(effectiveMyProfile, desc, strings.groupDescriptionUpdatedToast)
+            },
+            onChangeGroupPhoto = { uri ->
+                viewModel.uploadAndUpdateGroupPhoto(effectiveMyProfile, uri, strings.groupPhotoUpdatedToast)
+            },
+            onAddMembers = { newMembers ->
+                viewModel.addGroupMembers(effectiveMyProfile, newMembers, strings.groupMembersAddedToast)
+            },
+            onToggleOnlyAdminsCanSend = { onlyAdmins ->
+                viewModel.toggleGroupOnlyAdminsCanSend(effectiveMyProfile, onlyAdmins)
+            },
             onToggleMemberAdmin = { targetUid ->
-                viewModel.toggleGroupMemberAdmin(targetUid, strings.groupMemberUpdatedToast)
+                viewModel.toggleGroupMemberAdmin(effectiveMyProfile, targetUid, strings.groupMemberUpdatedToast)
             },
             onRemoveMember = { targetUid ->
-                viewModel.removeGroupMember(targetUid, strings.groupMemberUpdatedToast)
+                viewModel.removeGroupMember(effectiveMyProfile, targetUid, strings.groupMemberUpdatedToast)
             },
-            onOpenSharedMedia = { showSharedMediaSheet = true },
-            onLeaveGroup = { viewModel.leaveGroup(onLeft = onBack) },
+            onMessageMember = { member ->
+                showGroupInfoSheet = false
+                onOpenDirectChatWithMember(member)
+            },
+            onOpenSharedMedia = {
+                showGroupInfoSheet = false
+                showSharedMediaSheet = true
+            },
+            onClearChat = { viewModel.clearChatForMe(strings.chatClearedToast) },
+            onLeaveGroup = {
+                selfExitedGroup = true
+                showGroupInfoSheet = false
+                viewModel.leaveGroup(effectiveMyProfile) {
+                    Toast.makeText(context, strings.leftGroupToast, Toast.LENGTH_SHORT).show()
+                    onBack()
+                }
+            },
+            onDeleteGroup = {
+                selfExitedGroup = true
+                showGroupInfoSheet = false
+                viewModel.deleteGroup(strings.groupDeletedToast) {
+                    Toast.makeText(context, strings.groupDeletedToast, Toast.LENGTH_SHORT).show()
+                    onBack()
+                }
+            },
             onDismiss = { showGroupInfoSheet = false }
+        )
+    }
+
+    if (showClearChatConfirm) {
+        AlertDialog(
+            onDismissRequest = { showClearChatConfirm = false },
+            title = { Text(strings.clearChatConfirmTitle) },
+            text = { Text(strings.clearChatConfirmMessage) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showClearChatConfirm = false
+                        viewModel.clearChatForMe(strings.chatClearedToast)
+                    },
+                    modifier = Modifier.testTag("chat_confirm_clear_history_button")
+                ) {
+                    Text(strings.clearChatAction)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearChatConfirm = false }) {
+                    Text(strings.cancel)
+                }
+            }
+        )
+    }
+
+    if (showDeleteChatConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteChatConfirm = false },
+            title = { Text(strings.deleteChatConfirmTitle) },
+            text = { Text(strings.deleteChatConfirmMessage) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteChatConfirm = false
+                        viewModel.deleteChatForMe(strings.chatDeletedToast) {
+                            Toast.makeText(context, strings.chatDeletedToast, Toast.LENGTH_SHORT).show()
+                            onBack()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = DangerRed),
+                    modifier = Modifier.testTag("chat_confirm_delete_chat_button")
+                ) {
+                    Text(strings.deleteChatAction)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteChatConfirm = false }) {
+                    Text(strings.cancel)
+                }
+            }
+        )
+    }
+
+    if (showLeaveGroupConfirm) {
+        AlertDialog(
+            onDismissRequest = { showLeaveGroupConfirm = false },
+            title = { Text(strings.leaveGroupConfirmTitle) },
+            text = { Text(strings.leaveGroupConfirmMessage) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showLeaveGroupConfirm = false
+                        selfExitedGroup = true
+                        viewModel.leaveGroup(effectiveMyProfile) {
+                            Toast.makeText(context, strings.leftGroupToast, Toast.LENGTH_SHORT).show()
+                            onBack()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = DangerRed),
+                    modifier = Modifier.testTag("chat_confirm_leave_group_button")
+                ) {
+                    Text(strings.leaveGroup)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLeaveGroupConfirm = false }) {
+                    Text(strings.cancel)
+                }
+            }
+        )
+    }
+
+    if (showDeleteGroupConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteGroupConfirm = false },
+            title = { Text(strings.deleteGroupConfirmTitle) },
+            text = { Text(strings.deleteGroupConfirmMessage) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteGroupConfirm = false
+                        selfExitedGroup = true
+                        viewModel.deleteGroup(strings.groupDeletedToast) {
+                            Toast.makeText(context, strings.groupDeletedToast, Toast.LENGTH_SHORT).show()
+                            onBack()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = DangerRed),
+                    modifier = Modifier.testTag("chat_confirm_delete_group_button")
+                ) {
+                    Text(strings.deleteGroupAction)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteGroupConfirm = false }) {
+                    Text(strings.cancel)
+                }
+            }
         )
     }
 
@@ -1981,6 +2217,46 @@ private fun MessageBubbleItem(
 ) {
     val strings = LocalAppStrings.current
     val isDark = MaterialTheme.colorScheme.background.red < 0.2f
+
+    // Centered System Event Pill (Group created, renamed, member added/removed, admin changed, etc.)
+    if (message.type == "system" && !message.deleted) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f),
+                tonalElevation = 1.dp,
+                modifier = Modifier
+                    .widthIn(max = 310.dp)
+                    .testTag("system_event_bubble_${message.id}")
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Info,
+                        contentDescription = null,
+                        tint = BrandBlue,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = message.text,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
+        return
+    }
 
     // Dedicated in-chat Call Event Bubble (shows audio/video type, status, & exact talk time)
     if (message.type == "call" && !message.deleted) {
